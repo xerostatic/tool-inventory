@@ -10,7 +10,7 @@ import { Plus, Trash2, Download, Search, Package } from 'lucide-react';
 const SUPABASE_URL = 'https://likyqatbjazcuchfbega.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxpa3lxYXRiamF6Y3VjaGZiZWdhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIwMDgwODUsImV4cCI6MjA3NzU4NDA4NX0.sGSHxVdjHdh153ghEAqe5y2UIPkxyumUo1jal3RpGf0';
 
-// Simple Supabase client
+// Simple Supabase client with Auth
 class SupabaseClient {
   constructor(url, key) {
     this.url = url;
@@ -23,13 +23,60 @@ class SupabaseClient {
     };
   }
 
+  getAuthHeaders() {
+    const token = localStorage.getItem('supabase_token');
+    return {
+      ...this.headers,
+      'Authorization': `Bearer ${token || this.key}`
+    };
+  }
+
   async fetch(endpoint, options = {}) {
     const response = await fetch(`${this.url}/rest/v1/${endpoint}`, {
       ...options,
-      headers: { ...this.headers, ...options.headers }
+      headers: { ...this.getAuthHeaders(), ...options.headers }
     });
     if (!response.ok) throw new Error(`Error: ${response.statusText}`);
     return response.json();
+  }
+
+  async authFetch(endpoint, options = {}) {
+    const response = await fetch(`${this.url}/auth/v1/${endpoint}`, {
+      ...options,
+      headers: { ...this.headers, ...options.headers }
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.msg || data.message || 'Authentication error');
+    return data;
+  }
+
+  async signUp(email, password) {
+    return this.authFetch('signup', {
+      method: 'POST',
+      body: JSON.stringify({ email, password })
+    });
+  }
+
+  async signIn(email, password) {
+    const data = await this.authFetch('token?grant_type=password', {
+      method: 'POST',
+      body: JSON.stringify({ email, password })
+    });
+    if (data.access_token) {
+      localStorage.setItem('supabase_token', data.access_token);
+      localStorage.setItem('supabase_user', JSON.stringify(data.user));
+    }
+    return data;
+  }
+
+  async signOut() {
+    localStorage.removeItem('supabase_token');
+    localStorage.removeItem('supabase_user');
+  }
+
+  getUser() {
+    const user = localStorage.getItem('supabase_user');
+    return user ? JSON.parse(user) : null;
   }
 
   async select(table) {
@@ -51,9 +98,119 @@ class SupabaseClient {
 }
 
 // ============================================
+// AUTH COMPONENT
+// ============================================
+function AuthScreen({ onLogin }) {
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const supabase = useMemo(() => {
+    if (SUPABASE_URL === 'YOUR_SUPABASE_URL_HERE') return null;
+    return new SupabaseClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  }, []);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+
+    if (!supabase) {
+      setError('Supabase not configured');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      if (isSignUp) {
+        await supabase.signUp(email, password);
+        setError('Success! Check your email to verify your account, then sign in.');
+        setIsSignUp(false);
+      } else {
+        await supabase.signIn(email, password);
+        onLogin();
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 flex items-center justify-center p-6">
+      <div className="bg-gray-800 rounded-lg shadow-2xl p-8 w-full max-w-md">
+        <div className="text-center mb-8">
+          <Package className="w-16 h-16 mx-auto mb-4 text-blue-500" />
+          <h1 className="text-3xl font-bold text-white mb-2">Tool Inventory</h1>
+          <p className="text-gray-400">Sign in to access your collection</p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">Email</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              placeholder="you@example.com"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">Password</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              minLength={6}
+              className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              placeholder="••••••••"
+            />
+          </div>
+
+          {error && (
+            <div className={`p-3 rounded-lg text-sm ${
+              error.includes('Success') ? 'bg-green-900 text-green-200' : 'bg-red-900 text-red-200'
+            }`}>
+              {error}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white font-medium py-3 rounded-lg transition"
+          >
+            {loading ? 'Loading...' : isSignUp ? 'Sign Up' : 'Sign In'}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setIsSignUp(!isSignUp);
+              setError('');
+            }}
+            className="w-full text-gray-400 hover:text-white text-sm transition"
+          >
+            {isSignUp ? 'Already have an account? Sign in' : "Don't have an account? Sign up"}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ============================================
 // MAIN APP COMPONENT
 // ============================================
 export default function ToolInventory() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -82,12 +239,19 @@ export default function ToolInventory() {
 
   const conditions = ['New', 'Excellent', 'Good', 'Fair', 'Poor'];
 
-  // Initialize Supabase client
   const supabase = useMemo(() => {
-    if (SUPABASE_URL === 'YOUR_SUPABASE_URL_HERE') {
-      return null; // Not configured yet
-    }
+    if (SUPABASE_URL === 'YOUR_SUPABASE_URL_HERE') return null;
     return new SupabaseClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  }, []);
+
+  // Check authentication on mount
+  useEffect(() => {
+    const token = localStorage.getItem('supabase_token');
+    if (token) {
+      setIsAuthenticated(true);
+    } else {
+      setLoading(false);
+    }
   }, []);
 
   const saveToLocalStorage = useCallback((newItems) => {
@@ -104,7 +268,6 @@ export default function ToolInventory() {
       setError(null);
       
       if (!supabase) {
-        // Use localStorage as fallback if Supabase not configured
         const stored = localStorage.getItem('toolInventory');
         setItems(stored ? JSON.parse(stored) : []);
       } else {
@@ -121,10 +284,23 @@ export default function ToolInventory() {
     }
   }, [supabase]);
 
-  // Load items on mount
   useEffect(() => {
-    loadItems();
-  }, [loadItems]);
+    if (isAuthenticated) {
+      loadItems();
+    }
+  }, [isAuthenticated, loadItems]);
+
+  const handleLogin = () => {
+    setIsAuthenticated(true);
+  };
+
+  const handleLogout = async () => {
+    if (supabase) {
+      await supabase.signOut();
+    }
+    setIsAuthenticated(false);
+    setItems([]);
+  };
 
   const addItem = async () => {
     if (!formData.description || !formData.estimated_value) {
@@ -141,7 +317,6 @@ export default function ToolInventory() {
 
     try {
       if (!supabase) {
-        // Local storage fallback
         const itemWithId = { ...newItem, id: Date.now() };
         const newItems = [...items, itemWithId];
         setItems(newItems);
@@ -251,6 +426,11 @@ export default function ToolInventory() {
     return colors[condition] || 'bg-gray-900 text-gray-200';
   };
 
+  // Show auth screen if not authenticated
+  if (!isAuthenticated) {
+    return <AuthScreen onLogin={handleLogin} />;
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 flex items-center justify-center text-white">
@@ -262,20 +442,15 @@ export default function ToolInventory() {
     );
   }
 
+  const user = supabase?.getUser();
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 text-white p-6">
       <div className="max-w-7xl mx-auto">
-        {/* Header Card */}
         <div className="bg-gray-800 rounded-lg shadow-2xl p-6 mb-6">
           {error && (
             <div className="mb-4 p-3 bg-yellow-900 text-yellow-200 rounded-lg text-sm">
               ⚠️ {error}
-            </div>
-          )}
-          
-          {!supabase && (
-            <div className="mb-4 p-3 bg-blue-900 text-blue-200 rounded-lg text-sm">
-              ℹ️ Running in local mode. Configure Supabase to sync across devices.
             </div>
           )}
 
@@ -287,17 +462,31 @@ export default function ToolInventory() {
               </h1>
               <p className="text-gray-400 mt-2">Professional automotive tool collection tracker</p>
             </div>
-            <button
-              onClick={exportToCSV}
-              disabled={items.length === 0}
-              className="flex items-center gap-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 px-4 py-2 rounded-lg transition"
-            >
-              <Download className="w-5 h-5" />
-              Export CSV
-            </button>
+            <div className="flex items-center gap-4">
+              {user && (
+                <div className="flex items-center gap-2 text-sm text-gray-400">
+                  <User className="w-4 h-4" />
+                  {user.email}
+                </div>
+              )}
+              <button
+                onClick={exportToCSV}
+                disabled={items.length === 0}
+                className="flex items-center gap-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 px-4 py-2 rounded-lg transition"
+              >
+                <Download className="w-5 h-5" />
+                Export CSV
+              </button>
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-2 bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg transition"
+              >
+                <LogOut className="w-5 h-5" />
+                Logout
+              </button>
+            </div>
           </div>
 
-          {/* Stats */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
             <div className="bg-gradient-to-br from-blue-600 to-blue-700 rounded-lg p-4">
               <div className="text-blue-200 text-sm font-medium">Total Items</div>
@@ -313,7 +502,6 @@ export default function ToolInventory() {
             </div>
           </div>
 
-          {/* Category Totals */}
           {Object.keys(categoryTotals).length > 0 && (
             <div className="bg-gray-700 rounded-lg p-4 mb-6">
               <h3 className="text-lg font-semibold mb-3">Value by Category</h3>
@@ -330,7 +518,6 @@ export default function ToolInventory() {
             </div>
           )}
 
-          {/* Controls */}
           <div className="flex flex-col md:flex-row gap-4 mb-6">
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -361,7 +548,6 @@ export default function ToolInventory() {
             </button>
           </div>
 
-          {/* Add Form */}
           {showForm && (
             <div className="bg-gray-700 rounded-lg p-6">
               <h3 className="text-xl font-semibold mb-4">Add New Tool/Equipment</h3>
@@ -462,7 +648,6 @@ export default function ToolInventory() {
           )}
         </div>
 
-        {/* Table */}
         <div className="bg-gray-800 rounded-lg shadow-2xl overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
