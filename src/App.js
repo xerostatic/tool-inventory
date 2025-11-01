@@ -2,7 +2,7 @@
 // This is the main App.jsx file - copy this entire thing
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Plus, Trash2, Download, Search, Package } from 'lucide-react';
+import { Plus, Trash2, Download, Search, Package, LogOut, User } from 'lucide-react';
 
 // ============================================
 // CONFIGURATION - YOU'LL UPDATE THIS LATER
