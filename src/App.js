@@ -254,6 +254,17 @@ export default function ToolInventory() {
     }
   }, []);
 
+  // Load items only after authentication is confirmed
+  useEffect(() => {
+    if (isAuthenticated) {
+      // Small delay to ensure token is fully ready
+      const timer = setTimeout(() => {
+        loadItems();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [isAuthenticated, loadItems]);
+
   const saveToLocalStorage = useCallback((newItems) => {
     try {
       localStorage.setItem('toolInventory', JSON.stringify(newItems));
@@ -271,14 +282,18 @@ export default function ToolInventory() {
         const stored = localStorage.getItem('toolInventory');
         setItems(stored ? JSON.parse(stored) : []);
       } else {
-        const data = await supabase.select('tools');
-        setItems(data);
+        try {
+          const data = await supabase.select('tools');
+          setItems(data);
+        } catch (fetchError) {
+          console.error('Error fetching from Supabase:', fetchError);
+          // Don't show error on initial load, just use empty array
+          setItems([]);
+        }
       }
     } catch (err) {
       console.error('Error loading items:', err);
-      setError('Failed to load items. Using local storage.');
-      const stored = localStorage.getItem('toolInventory');
-      setItems(stored ? JSON.parse(stored) : []);
+      setItems([]);
     } finally {
       setLoading(false);
     }
