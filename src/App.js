@@ -2,7 +2,7 @@
 // This is the main App.jsx file - copy this entire thing
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Plus, Trash2, Download, Search, Package, LogOut, User } from 'lucide-react';
+import { Plus, Trash2, Download, Search, Package, LogOut, UserCircle } from 'lucide-react';
 
 // ============================================
 // CONFIGURATION - YOU'LL UPDATE THIS LATER
@@ -480,7 +480,7 @@ export default function ToolInventory() {
             <div className="flex items-center gap-4">
               {user && (
                 <div className="flex items-center gap-2 text-sm text-gray-400">
-                  <User className="w-4 h-4" />
+                  <UserCircle className="w-4 h-4" />
                   {user.email}
                 </div>
               )}
