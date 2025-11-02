@@ -234,7 +234,8 @@ export default function ToolInventory() {
 
   const brands = [
     'Snap-On', 'Mac', 'Matco', 'Craftsman', 'Milwaukee', 'DeWalt', 'Autel',
-    'Masterforce', 'Harbor Freight', 'Other'
+    'Masterforce', 'Harbor Freight', 'Tekton', 'SK', 'Williams', 'Kobalt', 
+    'GearWrench', 'Ingersoll Rand', 'Icon', 'Other'
   ];
 
   const conditions = ['New', 'Excellent', 'Good', 'Fair', 'Poor'];
