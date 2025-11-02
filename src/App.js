@@ -1,11 +1,11 @@
-// TOOL INVENTORY - COMPLETE REACT APP WITH SUPABASE
+// TOOL INVENTORY - COMPLETE REACT APP WITH SUPABASE AUTH
 // This is the main App.jsx file - copy this entire thing
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Plus, Trash2, Download, Search, Package, LogOut, UserCircle } from 'lucide-react';
 
 // ============================================
-// CONFIGURATION - YOU'LL UPDATE THIS LATER
+// CONFIGURATION - UPDATE WITH YOUR SUPABASE CREDENTIALS
 // ============================================
 const SUPABASE_URL = 'https://likyqatbjazcuchfbega.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxpa3lxYXRiamF6Y3VjaGZiZWdhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIwMDgwODUsImV4cCI6MjA3NzU4NDA4NX0.sGSHxVdjHdh153ghEAqe5y2UIPkxyumUo1jal3RpGf0';
@@ -244,27 +244,6 @@ export default function ToolInventory() {
     return new SupabaseClient(SUPABASE_URL, SUPABASE_ANON_KEY);
   }, []);
 
-  // Check authentication on mount
-  useEffect(() => {
-    const token = localStorage.getItem('supabase_token');
-    if (token) {
-      setIsAuthenticated(true);
-    } else {
-      setLoading(false);
-    }
-  }, []);
-
-  // Load items only after authentication is confirmed
-  useEffect(() => {
-    if (isAuthenticated) {
-      // Small delay to ensure token is fully ready
-      const timer = setTimeout(() => {
-        loadItems();
-      }, 100);
-      return () => clearTimeout(timer);
-    }
-  }, [isAuthenticated, loadItems]);
-
   const saveToLocalStorage = useCallback((newItems) => {
     try {
       localStorage.setItem('toolInventory', JSON.stringify(newItems));
@@ -287,7 +266,6 @@ export default function ToolInventory() {
           setItems(data);
         } catch (fetchError) {
           console.error('Error fetching from Supabase:', fetchError);
-          // Don't show error on initial load, just use empty array
           setItems([]);
         }
       }
@@ -299,9 +277,22 @@ export default function ToolInventory() {
     }
   }, [supabase]);
 
+  // Check authentication on mount
+  useEffect(() => {
+    const token = localStorage.getItem('supabase_token');
+    if (token) {
+      setIsAuthenticated(true);
+    } else {
+      setLoading(false);
+    }
+  }, []);
+
+  // Load items only after authentication is confirmed
   useEffect(() => {
     if (isAuthenticated) {
-      loadItems();
+      setTimeout(() => {
+        loadItems();
+      }, 100);
     }
   }, [isAuthenticated, loadItems]);
 
