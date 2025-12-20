@@ -2,6 +2,8 @@
 
 This is now a **single-project deployment**! No more separate frontend/backend headaches.
 
+**Last updated:** December 20, 2025
+
 ## 🚀 Deploy to Vercel (Super Simple)
 
 1. **Go to Vercel:** https://vercel.com/new
