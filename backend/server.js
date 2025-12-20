@@ -32,9 +32,16 @@ const upload = multer({
 // Initialize Google Cloud Vision client (optional)
 let visionClient = null;
 try {
-  if (fs.existsSync(process.env.GOOGLE_APPLICATION_CREDENTIALS || '')) {
+  // For Vercel: Use inline credentials from environment variable
+  if (process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON) {
+    const credentials = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON);
+    visionClient = new vision.ImageAnnotatorClient({ credentials });
+    console.log('✅ Google Cloud Vision API initialized (from env)');
+  }
+  // For local development: Use credentials file
+  else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
     visionClient = new vision.ImageAnnotatorClient();
-    console.log('✅ Google Cloud Vision API initialized');
+    console.log('✅ Google Cloud Vision API initialized (from file)');
   } else {
     console.log('⚠️  Google Cloud Vision API not configured (optional feature)');
   }
