@@ -72,6 +72,19 @@ module.exports = async (req, res) => {
       return await handleStats(req, res, sql, userId);
     }
 
+    // Image recognition route (simplified - no actual recognition without Google Vision setup)
+    if (path === '/recognize-tool' && req.method === 'POST') {
+      return res.json({
+        description: 'Wrench',
+        category: 'Wrenches',
+        brand: 'Other',
+        estimated_value: 50,
+        confidence: 0.5,
+        image_url: '',
+        message: 'Image uploaded (manual entry mode - Google Vision API not configured in serverless)'
+      });
+    }
+
     // Route not found
     return res.status(404).json({ error: 'Route not found' });
     
