@@ -1,135 +1,152 @@
-// TOOL INVENTORY - COMPLETE REACT APP WITH SUPABASE AUTH
-// This is the main App.jsx file - copy this entire thing
+// TOOL INVENTORY - COMPLETE REACT APP WITH NEON POSTGRESQL BACKEND
+// Multi-user app with image recognition powered by Google Cloud Vision
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Plus, Trash2, Download, Search, Package, LogOut, UserCircle } from 'lucide-react';
+import { Plus, Trash2, Download, Search, Package, LogOut, UserCircle, Camera, Upload, Loader } from 'lucide-react';
 
 // ============================================
-// CONFIGURATION - UPDATE WITH YOUR SUPABASE CREDENTIALS
+// CONFIGURATION
 // ============================================
-const SUPABASE_URL = 'https://likyqatbjazcuchfbega.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxpa3lxYXRiamF6Y3VjaGZiZWdhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIwMDgwODUsImV4cCI6MjA3NzU4NDA4NX0.sGSHxVdjHdh153ghEAqe5y2UIPkxyumUo1jal3RpGf0';
+const API_URL = 'http://localhost:5000/api';
 
-// Simple Supabase client with Auth
-class SupabaseClient {
-  constructor(url, key) {
-    this.url = url;
-    this.key = key;
-    this.headers = {
-      'apikey': key,
-      'Authorization': `Bearer ${key}`,
-      'Content-Type': 'application/json',
-      'Prefer': 'return=representation'
-    };
+// ============================================
+// API CLIENT
+// ============================================
+class ApiClient {
+  constructor(baseUrl) {
+    this.baseUrl = baseUrl;
   }
 
   getAuthHeaders() {
-    const token = localStorage.getItem('supabase_token');
+    const token = localStorage.getItem('auth_token');
     return {
-      ...this.headers,
-      'Authorization': `Bearer ${token || this.key}`
+      'Content-Type': 'application/json',
+      ...(token && { 'Authorization': `Bearer ${token}` })
     };
   }
 
-  async fetch(endpoint, options = {}) {
-    const response = await fetch(`${this.url}/rest/v1/${endpoint}`, {
+  async request(endpoint, options = {}) {
+    const response = await fetch(`${this.baseUrl}${endpoint}`, {
       ...options,
       headers: { ...this.getAuthHeaders(), ...options.headers }
     });
-    if (!response.ok) throw new Error(`Error: ${response.statusText}`);
-    return response.json();
-  }
 
-  async authFetch(endpoint, options = {}) {
-    const response = await fetch(`${this.url}/auth/v1/${endpoint}`, {
-      ...options,
-      headers: { ...this.headers, ...options.headers }
-    });
     const data = await response.json();
-    if (!response.ok) throw new Error(data.msg || data.message || 'Authentication error');
+
+    if (!response.ok) {
+      throw new Error(data.error || data.message || 'Request failed');
+    }
+
     return data;
   }
 
-  async signUp(email, password) {
-    return this.authFetch('signup', {
+  // Auth methods
+  async register(email, password) {
+    const data = await this.request('/auth/register', {
       method: 'POST',
       body: JSON.stringify({ email, password })
     });
-  }
-
-  async signIn(email, password) {
-    const data = await this.authFetch('token?grant_type=password', {
-      method: 'POST',
-      body: JSON.stringify({ email, password })
-    });
-    if (data.access_token) {
-      localStorage.setItem('supabase_token', data.access_token);
-      localStorage.setItem('supabase_user', JSON.stringify(data.user));
+    if (data.token) {
+      localStorage.setItem('auth_token', data.token);
+      localStorage.setItem('user', JSON.stringify(data.user));
     }
     return data;
   }
 
-  async signOut() {
-    localStorage.removeItem('supabase_token');
-    localStorage.removeItem('supabase_user');
+  async login(email, password) {
+    const data = await this.request('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password })
+    });
+    if (data.token) {
+      localStorage.setItem('auth_token', data.token);
+      localStorage.setItem('user', JSON.stringify(data.user));
+    }
+    return data;
+  }
+
+  async logout() {
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('user');
   }
 
   getUser() {
-    const user = localStorage.getItem('supabase_user');
+    const user = localStorage.getItem('user');
     return user ? JSON.parse(user) : null;
   }
 
-  async select(table) {
-    return this.fetch(`${table}?select=*&order=id.desc`);
+  // Tool methods
+  async getTools() {
+    return this.request('/tools');
   }
 
-  async insert(table, data) {
-    return this.fetch(table, {
+  async createTool(toolData) {
+    return this.request('/tools', {
       method: 'POST',
-      body: JSON.stringify(data)
+      body: JSON.stringify(toolData)
     });
   }
 
-  async delete(table, id) {
-    return this.fetch(`${table}?id=eq.${id}`, {
+  async updateTool(id, toolData) {
+    return this.request(`/tools/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(toolData)
+    });
+  }
+
+  async deleteTool(id) {
+    return this.request(`/tools/${id}`, {
       method: 'DELETE'
     });
+  }
+
+  // Image recognition
+  async recognizeTool(imageFile) {
+    const formData = new FormData();
+    formData.append('image', imageFile);
+
+    const token = localStorage.getItem('auth_token');
+    const response = await fetch(`${this.baseUrl}/recognize-tool`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      },
+      body: formData
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || 'Image recognition failed');
+    }
+
+    return data;
   }
 }
 
 // ============================================
 // AUTH COMPONENT
 // ============================================
-function AuthScreen({ onLogin }) {
+function AuthScreen({ onLogin, api }) {
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const supabase = useMemo(() => {
-    if (SUPABASE_URL === 'YOUR_SUPABASE_URL_HERE') return null;
-    return new SupabaseClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-  }, []);
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
 
-    if (!supabase) {
-      setError('Supabase not configured');
-      setLoading(false);
-      return;
-    }
-
     try {
       if (isSignUp) {
-        await supabase.signUp(email, password);
-        setError('Success! Check your email to verify your account, then sign in.');
-        setIsSignUp(false);
+        await api.register(email, password);
+        setError('Success! Account created. Logging you in...');
+        setTimeout(() => {
+          onLogin();
+        }, 1000);
       } else {
-        await supabase.signIn(email, password);
+        await api.login(email, password);
         onLogin();
       }
     } catch (err) {
@@ -207,6 +224,107 @@ function AuthScreen({ onLogin }) {
 }
 
 // ============================================
+// IMAGE UPLOAD COMPONENT
+// ============================================
+function ImageUploadModal({ isOpen, onClose, onRecognize, api }) {
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [recognizing, setRecognizing] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleFileSelect = (e) => {
+    const file = e.target.files[0];
+    if (file && file.type.startsWith('image/')) {
+      setSelectedFile(file);
+      setPreview(URL.createObjectURL(file));
+      setError('');
+    } else {
+      setError('Please select a valid image file');
+    }
+  };
+
+  const handleRecognize = async () => {
+    if (!selectedFile) return;
+
+    setRecognizing(true);
+    setError('');
+
+    try {
+      const result = await api.recognizeTool(selectedFile);
+      onRecognize(result);
+      onClose();
+    } catch (err) {
+      setError(err.message || 'Failed to recognize tool');
+    } finally {
+      setRecognizing(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-gray-800 rounded-lg p-6 max-w-md w-full">
+        <h3 className="text-xl font-bold mb-4">Upload Tool Image</h3>
+        
+        <div className="mb-4">
+          <label className="block w-full">
+            <div className="border-2 border-dashed border-gray-600 rounded-lg p-8 text-center cursor-pointer hover:border-blue-500 transition">
+              {preview ? (
+                <img src={preview} alt="Preview" className="max-h-64 mx-auto mb-4 rounded" />
+              ) : (
+                <>
+                  <Upload className="w-12 h-12 mx-auto mb-2 text-gray-400" />
+                  <p className="text-gray-400">Click to select image</p>
+                </>
+              )}
+            </div>
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleFileSelect}
+              className="hidden"
+            />
+          </label>
+        </div>
+
+        {error && (
+          <div className="mb-4 p-3 bg-red-900 text-red-200 rounded text-sm">
+            {error}
+          </div>
+        )}
+
+        <div className="flex gap-3">
+          <button
+            onClick={handleRecognize}
+            disabled={!selectedFile || recognizing}
+            className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 px-4 py-2 rounded-lg transition font-medium flex items-center justify-center gap-2"
+          >
+            {recognizing ? (
+              <>
+                <Loader className="w-5 h-5 animate-spin" />
+                Analyzing...
+              </>
+            ) : (
+              <>
+                <Camera className="w-5 h-5" />
+                Recognize Tool
+              </>
+            )}
+          </button>
+          <button
+            onClick={onClose}
+            className="px-4 py-2 bg-gray-600 hover:bg-gray-500 rounded-lg transition"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================
 // MAIN APP COMPONENT
 // ============================================
 export default function ToolInventory() {
@@ -217,6 +335,7 @@ export default function ToolInventory() {
   const [filterCategory, setFilterCategory] = useState('All');
   const [searchTerm, setSearchTerm] = useState('');
   const [showForm, setShowForm] = useState(false);
+  const [showImageUpload, setShowImageUpload] = useState(false);
   const [formData, setFormData] = useState({
     category: 'Diagnostic Equipment',
     brand: 'Snap-On',
@@ -224,7 +343,8 @@ export default function ToolInventory() {
     quantity: 1,
     condition: 'Good',
     estimated_value: '',
-    notes: ''
+    notes: '',
+    image_url: ''
   });
 
   const categories = [
@@ -240,47 +360,26 @@ export default function ToolInventory() {
 
   const conditions = ['New', 'Excellent', 'Good', 'Fair', 'Poor'];
 
-  const supabase = useMemo(() => {
-    if (SUPABASE_URL === 'YOUR_SUPABASE_URL_HERE') return null;
-    return new SupabaseClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-  }, []);
-
-  const saveToLocalStorage = useCallback((newItems) => {
-    try {
-      localStorage.setItem('toolInventory', JSON.stringify(newItems));
-    } catch (e) {
-      console.error('LocalStorage save failed:', e);
-    }
-  }, []);
+  const api = useMemo(() => new ApiClient(API_URL), []);
 
   const loadItems = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-      
-      if (!supabase) {
-        const stored = localStorage.getItem('toolInventory');
-        setItems(stored ? JSON.parse(stored) : []);
-      } else {
-        try {
-          const data = await supabase.select('tools');
-          setItems(data);
-        } catch (fetchError) {
-          console.error('Error fetching from Supabase:', fetchError);
-          setItems([]);
-        }
-      }
+      const data = await api.getTools();
+      setItems(data);
     } catch (err) {
       console.error('Error loading items:', err);
+      setError('Failed to load tools. Make sure the backend server is running.');
       setItems([]);
     } finally {
       setLoading(false);
     }
-  }, [supabase]);
+  }, [api]);
 
   // Check authentication on mount
   useEffect(() => {
-    const token = localStorage.getItem('supabase_token');
+    const token = localStorage.getItem('auth_token');
     if (token) {
       setIsAuthenticated(true);
     } else {
@@ -291,9 +390,7 @@ export default function ToolInventory() {
   // Load items only after authentication is confirmed
   useEffect(() => {
     if (isAuthenticated) {
-      setTimeout(() => {
-        loadItems();
-      }, 100);
+      loadItems();
     }
   }, [isAuthenticated, loadItems]);
 
@@ -302,11 +399,21 @@ export default function ToolInventory() {
   };
 
   const handleLogout = async () => {
-    if (supabase) {
-      await supabase.signOut();
-    }
+    await api.logout();
     setIsAuthenticated(false);
     setItems([]);
+  };
+
+  const handleImageRecognition = (result) => {
+    setFormData({
+      ...formData,
+      category: result.category || formData.category,
+      brand: result.brand || formData.brand,
+      description: result.description || formData.description,
+      estimated_value: result.estimated_value || formData.estimated_value,
+      image_url: result.image_url || ''
+    });
+    setShowForm(true);
   };
 
   const addItem = async () => {
@@ -316,22 +423,19 @@ export default function ToolInventory() {
     }
 
     const newItem = {
-      ...formData,
-      estimated_value: parseFloat(formData.estimated_value),
+      category: formData.category,
+      brand: formData.brand,
+      description: formData.description,
       quantity: parseInt(formData.quantity),
-      created_at: new Date().toISOString()
+      condition: formData.condition,
+      estimated_value: parseFloat(formData.estimated_value),
+      notes: formData.notes || '',
+      image_url: formData.image_url || ''
     };
 
     try {
-      if (!supabase) {
-        const itemWithId = { ...newItem, id: Date.now() };
-        const newItems = [...items, itemWithId];
-        setItems(newItems);
-        saveToLocalStorage(newItems);
-      } else {
-        const [inserted] = await supabase.insert('tools', newItem);
-        setItems([inserted, ...items]);
-      }
+      const created = await api.createTool(newItem);
+      setItems([created, ...items]);
 
       setFormData({
         category: 'Diagnostic Equipment',
@@ -340,7 +444,8 @@ export default function ToolInventory() {
         quantity: 1,
         condition: 'Good',
         estimated_value: '',
-        notes: ''
+        notes: '',
+        image_url: ''
       });
       setShowForm(false);
     } catch (err) {
@@ -354,14 +459,8 @@ export default function ToolInventory() {
     if (!confirm('Delete this item?')) return;
 
     try {
-      if (!supabase) {
-        const newItems = items.filter(item => item.id !== id);
-        setItems(newItems);
-        saveToLocalStorage(newItems);
-      } else {
-        await supabase.delete('tools', id);
-        setItems(items.filter(item => item.id !== id));
-      }
+      await api.deleteTool(id);
+      setItems(items.filter(item => item.id !== id));
     } catch (err) {
       console.error('Error deleting item:', err);
       alert('Failed to delete item: ' + err.message);
@@ -435,7 +534,7 @@ export default function ToolInventory() {
 
   // Show auth screen if not authenticated
   if (!isAuthenticated) {
-    return <AuthScreen onLogin={handleLogin} />;
+    return <AuthScreen onLogin={handleLogin} api={api} />;
   }
 
   if (loading) {
@@ -449,7 +548,7 @@ export default function ToolInventory() {
     );
   }
 
-  const user = supabase?.getUser();
+  const user = api.getUser();
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 text-white p-6">
@@ -547,6 +646,13 @@ export default function ToolInventory() {
               ))}
             </select>
             <button
+              onClick={() => setShowImageUpload(true)}
+              className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 px-6 py-2 rounded-lg transition font-medium"
+            >
+              <Camera className="w-5 h-5" />
+              Scan Tool
+            </button>
+            <button
               onClick={() => setShowForm(!showForm)}
               className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded-lg transition font-medium"
             >
@@ -555,9 +661,27 @@ export default function ToolInventory() {
             </button>
           </div>
 
+          <ImageUploadModal
+            isOpen={showImageUpload}
+            onClose={() => setShowImageUpload(false)}
+            onRecognize={handleImageRecognition}
+            api={api}
+          />
+
           {showForm && (
             <div className="bg-gray-700 rounded-lg p-6">
               <h3 className="text-xl font-semibold mb-4">Add New Tool/Equipment</h3>
+              
+              {formData.image_url && (
+                <div className="mb-4">
+                  <img 
+                    src={`http://localhost:5000${formData.image_url}`} 
+                    alt="Tool" 
+                    className="max-h-48 rounded-lg mx-auto"
+                  />
+                  <p className="text-center text-sm text-green-400 mt-2">✨ Auto-detected from image</p>
+                </div>
+              )}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-2">Category</label>
