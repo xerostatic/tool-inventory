@@ -1,0 +1,7 @@
+   DATABASE_URL=postgresql://neondb_owner:npg_IkLoV4gUX1GD@ep-wandering-glade-ah4hgryd-pooler.c-3.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require
+   JWT_SECRET=fdkjh398732hg8bfd87g387gpduh9802hgpwbsiu
+   NODE_ENV=production
+    PORT=5000
+   NODE_ENV=development
+   
+   GOOGLE_APPLICATION_CREDENTIALS=./google-credentials.json

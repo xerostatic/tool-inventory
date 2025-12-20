@@ -7,7 +7,7 @@ import { Plus, Trash2, Download, Search, Package, LogOut, UserCircle, Camera, Up
 // ============================================
 // CONFIGURATION
 // ============================================
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+const API_URL = '/api';
 
 // ============================================
 // API CLIENT
