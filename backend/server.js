@@ -7,8 +7,7 @@ const jwt = require('jsonwebtoken');
 const multer = require('multer');
 const { body, validationResult } = require('express-validator');
 const vision = require('@google-cloud/vision');
-const fs = require('fs');
-const path = require('path');
+const { put } = require('@vercel/blob');
 
 const app = express();
 const sql = neon(process.env.DATABASE_URL);
@@ -16,26 +15,10 @@ const sql = neon(process.env.DATABASE_URL);
 // Middleware
 app.use(cors());
 app.use(express.json());
-app.use('/uploads', express.static('uploads'));
 
-// Create uploads directory if it doesn't exist
-if (!fs.existsSync('uploads')) {
-  fs.mkdirSync('uploads');
-}
-
-// Multer configuration for file uploads
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, 'uploads/');
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, uniqueSuffix + path.extname(file.originalname));
-  }
-});
-
+// Multer configuration for file uploads (use memory storage for Vercel Blob)
 const upload = multer({ 
-  storage: storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
   fileFilter: (req, file, cb) => {
     if (file.mimetype.startsWith('image/')) {
@@ -351,8 +334,15 @@ app.post('/api/recognize-tool', authenticateToken, upload.single('image'), async
   }
 
   try {
-    const imagePath = req.file.path;
-    const imageUrl = `/uploads/${req.file.filename}`;
+    // Upload image to Vercel Blob Storage
+    let imageUrl = '';
+    if (process.env.BLOB_READ_WRITE_TOKEN) {
+      const blob = await put(req.file.originalname, req.file.buffer, {
+        access: 'public',
+        token: process.env.BLOB_READ_WRITE_TOKEN,
+      });
+      imageUrl = blob.url;
+    }
 
     let recognizedData = {
       description: '',
@@ -366,9 +356,9 @@ app.post('/api/recognize-tool', authenticateToken, upload.single('image'), async
     if (visionClient) {
       try {
         // Perform label detection, text detection, and object localization
-        const [labels] = await visionClient.labelDetection(imagePath);
-        const [texts] = await visionClient.textDetection(imagePath);
-        const [objects] = await visionClient.objectLocalization(imagePath);
+        const [labels] = await visionClient.labelDetection(req.file.buffer);
+        const [texts] = await visionClient.textDetection(req.file.buffer);
+        const [objects] = await visionClient.objectLocalization(req.file.buffer);
 
         // Extract labels
         const labelDescriptions = labels.labelAnnotations?.map(label => label.description) || [];
@@ -454,7 +444,7 @@ app.post('/api/recognize-tool', authenticateToken, upload.single('image'), async
 
   } catch (error) {
     console.error('Image recognition error:', error);
-    res.status(500).json({ error: 'Server error during image recognition' });
+    res.status(500).json({ error: 'Server error during image recognition: ' + error.message });
   }
 });
 

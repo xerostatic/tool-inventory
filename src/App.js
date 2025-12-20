@@ -675,7 +675,7 @@ export default function ToolInventory() {
               {formData.image_url && (
                 <div className="mb-4">
                   <img 
-                    src={`http://localhost:5000${formData.image_url}`} 
+                    src={formData.image_url} 
                     alt="Tool" 
                     className="max-h-48 rounded-lg mx-auto"
                   />
