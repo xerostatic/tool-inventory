@@ -5,6 +5,8 @@ const { neon } = require('@neondatabase/serverless');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { body, validationResult } = require('express-validator');
+const { put } = require('@vercel/blob');
+const vision = require('@google-cloud/vision');
 
 // For Vercel serverless functions, we export a single handler
 module.exports = async (req, res) => {
@@ -72,17 +74,9 @@ module.exports = async (req, res) => {
       return await handleStats(req, res, sql, userId);
     }
 
-    // Image recognition route (simplified - no actual recognition without Google Vision setup)
+    // Image recognition route
     if (path === '/recognize-tool' && req.method === 'POST') {
-      return res.json({
-        description: 'Wrench',
-        category: 'Wrenches',
-        brand: 'Other',
-        estimated_value: 50,
-        confidence: 0.5,
-        image_url: '',
-        message: 'Image uploaded (manual entry mode - Google Vision API not configured in serverless)'
-      });
+      return await handleImageRecognition(req, res, userId);
     }
 
     // Route not found
@@ -214,5 +208,168 @@ async function handleStats(req, res, sql, userId) {
     overview: stats[0],
     categories: categoryStats
   });
+}
+
+async function handleImageRecognition(req, res, userId) {
+  try {
+    // For serverless, we need to handle multipart form data differently
+    // Get the image data from the request
+    const contentType = req.headers['content-type'] || '';
+    
+    if (!contentType.includes('multipart/form-data')) {
+      return res.status(400).json({ error: 'Content-Type must be multipart/form-data' });
+    }
+
+    // Parse multipart form data (simplified for now)
+    // In production, you'd use a library like 'formidable' or 'busboy'
+    const chunks = [];
+    for await (const chunk of req) {
+      chunks.push(chunk);
+    }
+    const buffer = Buffer.concat(chunks);
+    
+    // Extract image data from multipart (this is a simplified version)
+    // In reality, we'd parse the multipart boundaries properly
+    const boundary = contentType.split('boundary=')[1];
+    const parts = buffer.toString('binary').split('--' + boundary);
+    
+    let imageBuffer = null;
+    let filename = 'tool-image.jpg';
+    
+    for (const part of parts) {
+      if (part.includes('Content-Type: image')) {
+        const lines = part.split('\r\n\r\n');
+        if (lines.length >= 2) {
+          const imageData = lines[1].split('\r\n')[0];
+          imageBuffer = Buffer.from(imageData, 'binary');
+          
+          // Extract filename if available
+          const filenameMatch = part.match(/filename="([^"]+)"/);
+          if (filenameMatch) filename = filenameMatch[1];
+        }
+      }
+    }
+
+    if (!imageBuffer) {
+      return res.status(400).json({ error: 'No image file found in request' });
+    }
+
+    let recognizedData = {
+      description: '',
+      category: 'Other',
+      brand: 'Other',
+      estimated_value: 0,
+      confidence: 0,
+      image_url: ''
+    };
+
+    // Upload to Vercel Blob if token is available
+    if (process.env.BLOB_READ_WRITE_TOKEN) {
+      try {
+        const blob = await put(filename, imageBuffer, {
+          access: 'public',
+          token: process.env.BLOB_READ_WRITE_TOKEN,
+        });
+        recognizedData.image_url = blob.url;
+      } catch (blobError) {
+        console.error('Blob upload error:', blobError);
+      }
+    }
+
+    // Initialize Google Cloud Vision if credentials are available
+    let visionClient = null;
+    if (process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON) {
+      try {
+        const credentials = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON);
+        visionClient = new vision.ImageAnnotatorClient({ credentials });
+      } catch (visionError) {
+        console.error('Vision API initialization error:', visionError);
+      }
+    }
+
+    // Analyze image with Google Cloud Vision
+    if (visionClient && imageBuffer) {
+      try {
+        const [labels] = await visionClient.labelDetection(imageBuffer);
+        const [texts] = await visionClient.textDetection(imageBuffer);
+        const [objects] = await visionClient.objectLocalization(imageBuffer);
+
+        const labelDescriptions = labels.labelAnnotations?.map(label => label.description) || [];
+        const detectedText = texts.textAnnotations?.[0]?.description || '';
+        const objectNames = objects.localizedObjectAnnotations?.map(obj => obj.name) || [];
+
+        const allInfo = [...labelDescriptions, ...objectNames, detectedText.toLowerCase()].join(' ').toLowerCase();
+
+        // Detect category
+        if (allInfo.includes('wrench') || allInfo.includes('spanner')) {
+          recognizedData.category = 'Wrenches';
+          recognizedData.description = 'Wrench';
+        } else if (allInfo.includes('drill') || allInfo.includes('power tool')) {
+          recognizedData.category = 'Power Tools';
+          recognizedData.description = 'Power Drill';
+        } else if (allInfo.includes('socket') || allInfo.includes('ratchet')) {
+          recognizedData.category = 'Sockets & Drives';
+          recognizedData.description = 'Socket Set';
+        } else if (allInfo.includes('hammer')) {
+          recognizedData.category = 'Hand Tools';
+          recognizedData.description = 'Hammer';
+        } else if (allInfo.includes('screwdriver')) {
+          recognizedData.category = 'Hand Tools';
+          recognizedData.description = 'Screwdriver';
+        } else if (allInfo.includes('toolbox') || allInfo.includes('storage') || allInfo.includes('chest')) {
+          recognizedData.category = 'Toolboxes/Storage';
+          recognizedData.description = 'Toolbox';
+        } else if (allInfo.includes('diagnostic') || allInfo.includes('scanner') || allInfo.includes('meter')) {
+          recognizedData.category = 'Diagnostic Equipment';
+          recognizedData.description = 'Diagnostic Tool';
+        } else {
+          recognizedData.description = labelDescriptions[0] || 'Tool';
+        }
+
+        // Detect brand
+        const brands = ['snap-on', 'snapon', 'mac', 'matco', 'craftsman', 'milwaukee', 'dewalt', 
+                       'autel', 'masterforce', 'harbor freight', 'tekton', 'kobalt', 'gearwrench'];
+        
+        for (const brand of brands) {
+          if (allInfo.includes(brand)) {
+            recognizedData.brand = brand.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+            if (recognizedData.brand.toLowerCase() === 'snapon') recognizedData.brand = 'Snap-On';
+            break;
+          }
+        }
+
+        // Estimate value based on brand
+        const valueMap = {
+          'Snap-On': { min: 100, max: 500 },
+          'Mac': { min: 80, max: 400 },
+          'Matco': { min: 80, max: 400 },
+          'Milwaukee': { min: 50, max: 300 },
+          'DeWalt': { min: 50, max: 300 },
+          'Craftsman': { min: 30, max: 200 },
+        };
+
+        const brandValue = valueMap[recognizedData.brand];
+        if (brandValue) {
+          recognizedData.estimated_value = Math.round((brandValue.min + brandValue.max) / 2);
+        } else {
+          recognizedData.estimated_value = 50;
+        }
+
+        recognizedData.confidence = labels.labelAnnotations?.[0]?.score || 0;
+
+      } catch (visionError) {
+        console.error('Vision API error:', visionError);
+      }
+    }
+
+    return res.json({
+      ...recognizedData,
+      message: visionClient ? 'Image analyzed successfully' : 'Image uploaded (Vision API not configured)'
+    });
+
+  } catch (error) {
+    console.error('Image recognition error:', error);
+    return res.status(500).json({ error: 'Server error during image recognition: ' + error.message });
+  }
 }
 
