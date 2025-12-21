@@ -40,6 +40,12 @@ module.exports = async (req, res) => {
       return await handleLogin(req, res, sql);
     }
 
+    // VIN decoder route (public - no auth required)
+    if (path.startsWith('/decode-vin/') && req.method === 'GET') {
+      const vin = path.split('/')[2];
+      return await handleDecodeVin(req, res, vin);
+    }
+
     // All other routes require authentication
     const token = req.headers.authorization?.split(' ')[1];
     if (!token) {
@@ -90,12 +96,6 @@ module.exports = async (req, res) => {
     if (path.startsWith('/cars/') && req.method === 'DELETE') {
       const id = path.split('/')[2];
       return await handleDeleteCar(req, res, sql, userId, id);
-    }
-
-    // VIN decoder route (public - no auth required for demo, or add authenticateToken if you want)
-    if (path.startsWith('/decode-vin/') && req.method === 'GET') {
-      const vin = path.split('/')[2];
-      return await handleDecodeVin(req, res, vin);
     }
 
     // Route not found
