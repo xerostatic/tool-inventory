@@ -608,15 +608,17 @@ export default function ToolInventory() {
     });
   }, [items, filterCategory, searchTerm]);
 
-  const totalValue = useMemo(() => {
-    const toolsValue = items.reduce((sum, item) => sum + (item.estimated_value * item.quantity), 0);
-    const carsValue = cars.reduce((sum, car) => sum + parseFloat(car.estimated_value), 0);
-    return toolsValue + carsValue;
-  }, [items, cars]);
+  const toolsValue = useMemo(() => {
+    return items.reduce((sum, item) => sum + (item.estimated_value * item.quantity), 0);
+  }, [items]);
 
-  const filteredValue = useMemo(() => {
-    return filteredItems.reduce((sum, item) => sum + (item.estimated_value * item.quantity), 0);
-  }, [filteredItems]);
+  const carsValue = useMemo(() => {
+    return cars.reduce((sum, car) => sum + parseFloat(car.estimated_value), 0);
+  }, [cars]);
+
+  const totalValue = useMemo(() => {
+    return toolsValue + carsValue;
+  }, [toolsValue, carsValue]);
 
   const categoryTotals = useMemo(() => {
     const totals = {};
@@ -727,16 +729,19 @@ export default function ToolInventory() {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
             <div className="bg-gradient-to-br from-blue-600 to-blue-700 rounded-lg p-4">
-              <div className="text-blue-200 text-sm font-medium">Total Items</div>
-              <div className="text-3xl font-bold mt-1">{items.length}</div>
-            </div>
-            <div className="bg-gradient-to-br from-green-600 to-green-700 rounded-lg p-4">
-              <div className="text-green-200 text-sm font-medium">Total Value</div>
-              <div className="text-3xl font-bold mt-1">${totalValue.toLocaleString()}</div>
+              <div className="text-blue-200 text-sm font-medium">🔧 Tool Value</div>
+              <div className="text-3xl font-bold mt-1">${toolsValue.toLocaleString()}</div>
+              <div className="text-blue-200 text-xs mt-1">{items.length} items</div>
             </div>
             <div className="bg-gradient-to-br from-purple-600 to-purple-700 rounded-lg p-4">
-              <div className="text-purple-200 text-sm font-medium">Filtered Value</div>
-              <div className="text-3xl font-bold mt-1">${filteredValue.toLocaleString()}</div>
+              <div className="text-purple-200 text-sm font-medium">🚗 Car Value</div>
+              <div className="text-3xl font-bold mt-1">${carsValue.toLocaleString()}</div>
+              <div className="text-purple-200 text-xs mt-1">{cars.length} cars</div>
+            </div>
+            <div className="bg-gradient-to-br from-green-600 to-green-700 rounded-lg p-4">
+              <div className="text-green-200 text-sm font-medium">💰 Total Value</div>
+              <div className="text-3xl font-bold mt-1">${totalValue.toLocaleString()}</div>
+              <div className="text-green-200 text-xs mt-1">Combined inventory</div>
             </div>
           </div>
 
