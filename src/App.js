@@ -393,15 +393,21 @@ export default function ToolInventory() {
 
   const loadCars = useCallback(async () => {
     try {
-      setError(null);
       const response = await fetch(`${API_URL}/cars`, {
         headers: api.getAuthHeaders()
       });
+      
+      // If cars table doesn't exist yet, just set empty array
+      if (!response.ok) {
+        console.log('Cars table not yet initialized');
+        setCars([]);
+        return;
+      }
+      
       const data = await response.json();
-      setCars(data);
+      setCars(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Error loading cars:', err);
-      setError('Failed to load cars.');
       setCars([]);
     }
   }, [api]);

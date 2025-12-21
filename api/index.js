@@ -308,12 +308,20 @@ async function handleImageRecognition(req, res, userId) {
 
 // Car handler functions
 async function handleGetCars(req, res, sql, userId) {
-  const cars = await sql`
-    SELECT * FROM cars 
-    WHERE user_id = ${userId}
-    ORDER BY created_at DESC
-  `;
-  return res.json(cars);
+  try {
+    const cars = await sql`
+      SELECT * FROM cars 
+      WHERE user_id = ${userId}
+      ORDER BY created_at DESC
+    `;
+    return res.json(cars);
+  } catch (error) {
+    // If table doesn't exist yet, return empty array
+    if (error.message && error.message.includes('does not exist')) {
+      return res.json([]);
+    }
+    throw error;
+  }
 }
 
 async function handleCreateCar(req, res, sql, userId) {
