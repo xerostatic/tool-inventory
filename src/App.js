@@ -359,6 +359,7 @@ export default function ToolInventory() {
     notes: '',
     image_url: ''
   });
+  const [decodingVin, setDecodingVin] = useState(false);
 
   const categories = [
     'Diagnostic Equipment', 'Toolboxes/Storage', 'Sockets & Drives', 'Wrenches',
@@ -554,6 +555,39 @@ export default function ToolInventory() {
     } catch (err) {
       console.error('Error deleting car:', err);
       alert('Failed to delete car: ' + err.message);
+    }
+  };
+
+  const decodeVin = async () => {
+    if (!carFormData.vin || carFormData.vin.length !== 17) {
+      alert('Please enter a valid 17-character VIN');
+      return;
+    }
+
+    setDecodingVin(true);
+    try {
+      const response = await fetch(`${API_URL}/decode-vin/${carFormData.vin}`);
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to decode VIN');
+      }
+
+      // Auto-fill the form with decoded data
+      setCarFormData({
+        ...carFormData,
+        make: result.data.make || carFormData.make,
+        model: result.data.model || carFormData.model,
+        year: result.data.year || carFormData.year,
+        notes: result.data.trim ? `Trim: ${result.data.trim}` : carFormData.notes
+      });
+
+      alert('✅ VIN decoded successfully! Form auto-filled.');
+    } catch (err) {
+      console.error('VIN decode error:', err);
+      alert('❌ ' + err.message);
+    } finally {
+      setDecodingVin(false);
     }
   };
 
@@ -934,16 +968,27 @@ export default function ToolInventory() {
                     className="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-lg focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
-                <div>
+                <div className="md:col-span-2">
                   <label className="block text-sm font-medium mb-2">VIN</label>
-                  <input
-                    type="text"
-                    value={carFormData.vin}
-                    onChange={(e) => setCarFormData({...carFormData, vin: e.target.value})}
-                    placeholder="17-character VIN"
-                    maxLength="17"
-                    className="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-lg focus:ring-2 focus:ring-blue-500"
-                  />
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={carFormData.vin}
+                      onChange={(e) => setCarFormData({...carFormData, vin: e.target.value.toUpperCase()})}
+                      placeholder="Enter 17-character VIN"
+                      maxLength="17"
+                      className="flex-1 px-3 py-2 bg-gray-600 border border-gray-500 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={decodeVin}
+                      disabled={!carFormData.vin || carFormData.vin.length !== 17 || decodingVin}
+                      className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 rounded-lg transition font-medium whitespace-nowrap"
+                    >
+                      {decodingVin ? 'Decoding...' : '🔍 Decode VIN'}
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1">Enter VIN and click Decode to auto-fill make, model, and year</p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-2">Mileage</label>

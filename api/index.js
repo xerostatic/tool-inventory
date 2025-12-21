@@ -92,6 +92,12 @@ module.exports = async (req, res) => {
       return await handleDeleteCar(req, res, sql, userId, id);
     }
 
+    // VIN decoder route (public - no auth required for demo, or add authenticateToken if you want)
+    if (path.startsWith('/decode-vin/') && req.method === 'GET') {
+      const vin = path.split('/')[2];
+      return await handleDecodeVin(req, res, vin);
+    }
+
     // Route not found
     return res.status(404).json({ error: 'Route not found' });
     
@@ -340,5 +346,64 @@ async function handleDeleteCar(req, res, sql, userId, id) {
   }
 
   return res.json({ message: 'Car deleted successfully' });
+}
+
+// VIN decoder using NHTSA API
+async function handleDecodeVin(req, res, vin) {
+  if (!vin || vin.length !== 17) {
+    return res.status(400).json({ error: 'VIN must be exactly 17 characters' });
+  }
+
+  try {
+    // Call NHTSA VIN Decoder API
+    const response = await fetch(
+      `https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValues/${vin}?format=json`
+    );
+    
+    const data = await response.json();
+    
+    if (!data.Results || data.Results.length === 0) {
+      return res.status(404).json({ error: 'VIN not found' });
+    }
+
+    const result = data.Results[0];
+    
+    // Check if VIN is valid
+    if (result.ErrorCode !== '0') {
+      return res.status(400).json({ 
+        error: 'Invalid VIN',
+        details: result.ErrorText 
+      });
+    }
+
+    // Extract relevant data
+    const decodedData = {
+      make: result.Make || '',
+      model: result.Model || '',
+      year: parseInt(result.ModelYear) || new Date().getFullYear(),
+      vin: vin,
+      bodyType: result.BodyClass || '',
+      trim: result.Trim || '',
+      engineCylinders: result.EngineCylinders || '',
+      engineDisplacement: result.DisplacementL || '',
+      fuelType: result.FuelTypePrimary || '',
+      manufacturer: result.Manufacturer || '',
+      plantCity: result.PlantCity || '',
+      vehicleType: result.VehicleType || ''
+    };
+
+    return res.json({
+      success: true,
+      data: decodedData,
+      message: 'VIN decoded successfully'
+    });
+
+  } catch (error) {
+    console.error('VIN decode error:', error);
+    return res.status(500).json({ 
+      error: 'Failed to decode VIN',
+      details: error.message 
+    });
+  }
 }
 
