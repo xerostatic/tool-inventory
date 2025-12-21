@@ -329,7 +329,9 @@ function ImageUploadModal({ isOpen, onClose, onRecognize, api }) {
 // ============================================
 export default function ToolInventory() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [activeTab, setActiveTab] = useState('tools'); // 'tools' or 'cars'
   const [items, setItems] = useState([]);
+  const [cars, setCars] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [filterCategory, setFilterCategory] = useState('All');
@@ -341,6 +343,17 @@ export default function ToolInventory() {
     brand: 'Snap-On',
     description: '',
     quantity: 1,
+    condition: 'Good',
+    estimated_value: '',
+    notes: '',
+    image_url: ''
+  });
+  const [carFormData, setCarFormData] = useState({
+    make: '',
+    model: '',
+    year: new Date().getFullYear(),
+    vin: '',
+    mileage: '',
     condition: 'Good',
     estimated_value: '',
     notes: '',
@@ -377,6 +390,21 @@ export default function ToolInventory() {
     }
   }, [api]);
 
+  const loadCars = useCallback(async () => {
+    try {
+      setError(null);
+      const response = await fetch(`${API_URL}/cars`, {
+        headers: api.getAuthHeaders()
+      });
+      const data = await response.json();
+      setCars(data);
+    } catch (err) {
+      console.error('Error loading cars:', err);
+      setError('Failed to load cars.');
+      setCars([]);
+    }
+  }, [api]);
+
   // Check authentication on mount
   useEffect(() => {
     const token = localStorage.getItem('auth_token');
@@ -391,8 +419,9 @@ export default function ToolInventory() {
   useEffect(() => {
     if (isAuthenticated) {
       loadItems();
+      loadCars();
     }
-  }, [isAuthenticated, loadItems]);
+  }, [isAuthenticated, loadItems, loadCars]);
 
   const handleLogin = () => {
     setIsAuthenticated(true);
@@ -467,6 +496,67 @@ export default function ToolInventory() {
     }
   };
 
+  const addCar = async () => {
+    if (!carFormData.make || !carFormData.model || !carFormData.estimated_value) {
+      alert('Please fill in make, model, and estimated value');
+      return;
+    }
+
+    const newCar = {
+      make: carFormData.make,
+      model: carFormData.model,
+      year: parseInt(carFormData.year),
+      vin: carFormData.vin || '',
+      mileage: carFormData.mileage ? parseInt(carFormData.mileage) : null,
+      condition: carFormData.condition,
+      estimated_value: parseFloat(carFormData.estimated_value),
+      notes: carFormData.notes || '',
+      image_url: carFormData.image_url || ''
+    };
+
+    try {
+      const response = await fetch(`${API_URL}/cars`, {
+        method: 'POST',
+        headers: api.getAuthHeaders(),
+        body: JSON.stringify(newCar)
+      });
+      const created = await response.json();
+      setCars([created, ...cars]);
+
+      setCarFormData({
+        make: '',
+        model: '',
+        year: new Date().getFullYear(),
+        vin: '',
+        mileage: '',
+        condition: 'Good',
+        estimated_value: '',
+        notes: '',
+        image_url: ''
+      });
+      setShowForm(false);
+    } catch (err) {
+      console.error('Error adding car:', err);
+      alert('Failed to add car: ' + err.message);
+    }
+  };
+
+  const deleteCar = async (id) => {
+    // eslint-disable-next-line no-restricted-globals
+    if (!confirm('Delete this car?')) return;
+
+    try {
+      await fetch(`${API_URL}/cars/${id}`, {
+        method: 'DELETE',
+        headers: api.getAuthHeaders()
+      });
+      setCars(cars.filter(car => car.id !== id));
+    } catch (err) {
+      console.error('Error deleting car:', err);
+      alert('Failed to delete car: ' + err.message);
+    }
+  };
+
   const filteredItems = useMemo(() => {
     return items.filter(item => {
       const matchesCategory = filterCategory === 'All' || item.category === filterCategory;
@@ -479,8 +569,10 @@ export default function ToolInventory() {
   }, [items, filterCategory, searchTerm]);
 
   const totalValue = useMemo(() => {
-    return items.reduce((sum, item) => sum + (item.estimated_value * item.quantity), 0);
-  }, [items]);
+    const toolsValue = items.reduce((sum, item) => sum + (item.estimated_value * item.quantity), 0);
+    const carsValue = cars.reduce((sum, car) => sum + parseFloat(car.estimated_value), 0);
+    return toolsValue + carsValue;
+  }, [items, cars]);
 
   const filteredValue = useMemo(() => {
     return filteredItems.reduce((sum, item) => sum + (item.estimated_value * item.quantity), 0);
@@ -608,7 +700,7 @@ export default function ToolInventory() {
             </div>
           </div>
 
-          {Object.keys(categoryTotals).length > 0 && (
+          {Object.keys(categoryTotals).length > 0 && activeTab === 'tools' && (
             <div className="bg-gray-700 rounded-lg p-4 mb-6">
               <h3 className="text-lg font-semibold mb-3">Value by Category</h3>
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
@@ -624,40 +716,68 @@ export default function ToolInventory() {
             </div>
           )}
 
+          {/* Tabs */}
+          <div className="flex gap-4 mb-6 border-b border-gray-700">
+            <button
+              onClick={() => setActiveTab('tools')}
+              className={`px-6 py-3 font-medium transition ${
+                activeTab === 'tools'
+                  ? 'text-blue-400 border-b-2 border-blue-400'
+                  : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              🔧 Tools ({items.length})
+            </button>
+            <button
+              onClick={() => setActiveTab('cars')}
+              className={`px-6 py-3 font-medium transition ${
+                activeTab === 'cars'
+                  ? 'text-blue-400 border-b-2 border-blue-400'
+                  : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              🚗 Cars ({cars.length})
+            </button>
+          </div>
+
           <div className="flex flex-col md:flex-row gap-4 mb-6">
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
               <input
                 type="text"
-                placeholder="Search tools..."
+                placeholder={activeTab === 'tools' ? "Search tools..." : "Search cars..."}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
-            <select
-              value={filterCategory}
-              onChange={(e) => setFilterCategory(e.target.value)}
-              className="px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="All">All Categories</option>
-              {categories.map(cat => (
-                <option key={cat} value={cat}>{cat}</option>
-              ))}
-            </select>
-            <button
-              onClick={() => setShowImageUpload(true)}
-              className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 px-6 py-2 rounded-lg transition font-medium"
-            >
-              <Camera className="w-5 h-5" />
-              Scan Tool
-            </button>
+            {activeTab === 'tools' && (
+              <>
+                <select
+                  value={filterCategory}
+                  onChange={(e) => setFilterCategory(e.target.value)}
+                  className="px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="All">All Categories</option>
+                  {categories.map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+                <button
+                  onClick={() => setShowImageUpload(true)}
+                  className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 px-6 py-2 rounded-lg transition font-medium"
+                >
+                  <Camera className="w-5 h-5" />
+                  Scan Tool
+                </button>
+              </>
+            )}
             <button
               onClick={() => setShowForm(!showForm)}
               className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded-lg transition font-medium"
             >
               <Plus className="w-5 h-5" />
-              Add Item
+              {activeTab === 'tools' ? 'Add Tool' : 'Add Car'}
             </button>
           </div>
 
@@ -668,7 +788,7 @@ export default function ToolInventory() {
             api={api}
           />
 
-          {showForm && (
+          {showForm && activeTab === 'tools' && (
             <div className="bg-gray-700 rounded-lg p-6">
               <h3 className="text-xl font-semibold mb-4">Add New Tool/Equipment</h3>
               
@@ -777,25 +897,135 @@ export default function ToolInventory() {
               </div>
             </div>
           )}
+
+          {showForm && activeTab === 'cars' && (
+            <div className="bg-gray-700 rounded-lg p-6">
+              <h3 className="text-xl font-semibold mb-4">Add New Car</h3>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Make *</label>
+                  <input
+                    type="text"
+                    value={carFormData.make}
+                    onChange={(e) => setCarFormData({...carFormData, make: e.target.value})}
+                    placeholder="e.g., Toyota, Ford, BMW"
+                    className="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Model *</label>
+                  <input
+                    type="text"
+                    value={carFormData.model}
+                    onChange={(e) => setCarFormData({...carFormData, model: e.target.value})}
+                    placeholder="e.g., Camry, F-150, 3 Series"
+                    className="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Year *</label>
+                  <input
+                    type="number"
+                    value={carFormData.year}
+                    onChange={(e) => setCarFormData({...carFormData, year: e.target.value})}
+                    min="1900"
+                    max={new Date().getFullYear() + 1}
+                    className="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">VIN</label>
+                  <input
+                    type="text"
+                    value={carFormData.vin}
+                    onChange={(e) => setCarFormData({...carFormData, vin: e.target.value})}
+                    placeholder="17-character VIN"
+                    maxLength="17"
+                    className="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Mileage</label>
+                  <input
+                    type="number"
+                    value={carFormData.mileage}
+                    onChange={(e) => setCarFormData({...carFormData, mileage: e.target.value})}
+                    placeholder="0"
+                    min="0"
+                    className="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Condition *</label>
+                  <select
+                    value={carFormData.condition}
+                    onChange={(e) => setCarFormData({...carFormData, condition: e.target.value})}
+                    className="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  >
+                    {conditions.map(cond => (
+                      <option key={cond} value={cond}>{cond}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Estimated Value *</label>
+                  <input
+                    type="number"
+                    value={carFormData.estimated_value}
+                    onChange={(e) => setCarFormData({...carFormData, estimated_value: e.target.value})}
+                    placeholder="0.00"
+                    step="0.01"
+                    className="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Notes (optional)</label>
+                  <input
+                    type="text"
+                    value={carFormData.notes}
+                    onChange={(e) => setCarFormData({...carFormData, notes: e.target.value})}
+                    placeholder="Modifications, issues, etc."
+                    className="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+              <div className="flex gap-3 mt-4">
+                <button
+                  onClick={addCar}
+                  className="flex-1 bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg transition font-medium"
+                >
+                  Add Car
+                </button>
+                <button
+                  onClick={() => setShowForm(false)}
+                  className="px-4 py-2 bg-gray-600 hover:bg-gray-500 rounded-lg transition"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="bg-gray-800 rounded-lg shadow-2xl overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-700">
-                <tr>
-                  <th className="px-4 py-3 text-left text-sm font-semibold">Category</th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold">Brand</th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold">Description</th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold">Qty</th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold">Condition</th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold">Unit Value</th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold">Total</th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold">Notes</th>
-                  <th className="px-4 py-3 text-center text-sm font-semibold">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-700">
+            {activeTab === 'tools' ? (
+              <table className="w-full">
+                <thead className="bg-gray-700">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-sm font-semibold">Category</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold">Brand</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold">Description</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold">Qty</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold">Condition</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold">Unit Value</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold">Total</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold">Notes</th>
+                    <th className="px-4 py-3 text-center text-sm font-semibold">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-700">
                 {filteredItems.length === 0 ? (
                   <tr>
                     <td colSpan="9" className="px-4 py-12 text-center text-gray-400">
@@ -837,6 +1067,66 @@ export default function ToolInventory() {
                 )}
               </tbody>
             </table>
+            ) : (
+              <table className="w-full">
+                <thead className="bg-gray-700">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-sm font-semibold">Make</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold">Model</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold">Year</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold">VIN</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold">Mileage</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold">Condition</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold">Value</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold">Notes</th>
+                    <th className="px-4 py-3 text-center text-sm font-semibold">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-700">
+                  {cars.length === 0 ? (
+                    <tr>
+                      <td colSpan="9" className="px-4 py-12 text-center text-gray-400">
+                        <Package className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                        <p className="text-lg">No cars yet. Click "Add Car" to start building your car inventory.</p>
+                      </td>
+                    </tr>
+                  ) : (
+                    cars
+                      .filter(car => 
+                        car.make.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        car.model.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        (car.notes && car.notes.toLowerCase().includes(searchTerm.toLowerCase()))
+                      )
+                      .map(car => (
+                        <tr key={car.id} className="hover:bg-gray-750">
+                          <td className="px-4 py-3 text-sm font-medium">{car.make}</td>
+                          <td className="px-4 py-3 text-sm">{car.model}</td>
+                          <td className="px-4 py-3 text-sm">{car.year}</td>
+                          <td className="px-4 py-3 text-sm text-xs">{car.vin || '-'}</td>
+                          <td className="px-4 py-3 text-sm">{car.mileage ? car.mileage.toLocaleString() : '-'}</td>
+                          <td className="px-4 py-3 text-sm">
+                            <span className={`px-2 py-1 rounded text-xs font-medium ${getConditionColor(car.condition)}`}>
+                              {car.condition}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-sm font-bold text-green-400">
+                            ${parseFloat(car.estimated_value).toLocaleString()}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-400">{car.notes || '-'}</td>
+                          <td className="px-4 py-3 text-center">
+                            <button
+                              onClick={() => deleteCar(car.id)}
+                              className="text-red-400 hover:text-red-300 transition"
+                            >
+                              <Trash2 className="w-5 h-5" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                  )}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
       </div>

@@ -78,6 +78,20 @@ module.exports = async (req, res) => {
       return await handleImageRecognition(req, res, userId);
     }
 
+    // Cars routes
+    if (path === '/cars' && req.method === 'GET') {
+      return await handleGetCars(req, res, sql, userId);
+    }
+    
+    if (path === '/cars' && req.method === 'POST') {
+      return await handleCreateCar(req, res, sql, userId);
+    }
+
+    if (path.startsWith('/cars/') && req.method === 'DELETE') {
+      const id = path.split('/')[2];
+      return await handleDeleteCar(req, res, sql, userId, id);
+    }
+
     // Route not found
     return res.status(404).json({ error: 'Route not found' });
     
@@ -284,5 +298,47 @@ async function handleImageRecognition(req, res, userId) {
     console.error('Image recognition error:', error);
     return res.status(500).json({ error: 'Server error during image recognition: ' + error.message });
   }
+}
+
+// Car handler functions
+async function handleGetCars(req, res, sql, userId) {
+  const cars = await sql`
+    SELECT * FROM cars 
+    WHERE user_id = ${userId}
+    ORDER BY created_at DESC
+  `;
+  return res.json(cars);
+}
+
+async function handleCreateCar(req, res, sql, userId) {
+  const { make, model, year, vin, mileage, condition, estimated_value, notes, image_url } = req.body;
+
+  const result = await sql`
+    INSERT INTO cars (
+      user_id, make, model, year, vin, mileage,
+      condition, estimated_value, notes, image_url
+    )
+    VALUES (
+      ${userId}, ${make}, ${model}, ${year}, ${vin || null}, ${mileage || null},
+      ${condition}, ${estimated_value}, ${notes || null}, ${image_url || null}
+    )
+    RETURNING *
+  `;
+
+  return res.status(201).json(result[0]);
+}
+
+async function handleDeleteCar(req, res, sql, userId, id) {
+  const result = await sql`
+    DELETE FROM cars 
+    WHERE id = ${id} AND user_id = ${userId}
+    RETURNING id
+  `;
+
+  if (result.length === 0) {
+    return res.status(404).json({ error: 'Car not found' });
+  }
+
+  return res.json({ message: 'Car deleted successfully' });
 }
 
