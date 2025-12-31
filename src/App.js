@@ -630,17 +630,35 @@ export default function ToolInventory() {
   }, [items]);
 
   const exportToCSV = () => {
-    const headers = ['Category', 'Brand', 'Description', 'Quantity', 'Condition', 'Unit Value', 'Total Value', 'Notes'];
-    const rows = items.map(item => [
-      item.category,
-      item.brand,
-      item.description,
-      item.quantity,
-      item.condition,
-      item.estimated_value,
-      item.estimated_value * item.quantity,
-      item.notes || ''
-    ]);
+    let headers, rows, filename;
+
+    if (activeTab === 'tools') {
+      headers = ['Category', 'Brand', 'Description', 'Quantity', 'Condition', 'Unit Value', 'Total Value', 'Notes'];
+      rows = items.map(item => [
+        item.category,
+        item.brand,
+        item.description,
+        item.quantity,
+        item.condition,
+        item.estimated_value,
+        item.estimated_value * item.quantity,
+        item.notes || ''
+      ]);
+      filename = `tool-inventory-${new Date().toISOString().split('T')[0]}.csv`;
+    } else {
+      headers = ['Year', 'Make', 'Model', 'VIN', 'Mileage', 'Condition', 'Estimated Value', 'Notes'];
+      rows = cars.map(car => [
+        car.year,
+        car.make,
+        car.model,
+        car.vin || '',
+        car.mileage || '',
+        car.condition,
+        car.estimated_value,
+        car.notes || ''
+      ]);
+      filename = `car-inventory-${new Date().toISOString().split('T')[0]}.csv`;
+    }
 
     const csv = [
       headers.join(','),
@@ -651,7 +669,7 @@ export default function ToolInventory() {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `tool-inventory-${new Date().toISOString().split('T')[0]}.csv`;
+    a.download = filename;
     a.click();
   };
 
@@ -711,11 +729,11 @@ export default function ToolInventory() {
               )}
               <button
                 onClick={exportToCSV}
-                disabled={items.length === 0}
+                disabled={activeTab === 'tools' ? items.length === 0 : cars.length === 0}
                 className="flex items-center gap-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 px-4 py-2 rounded-lg transition"
               >
                 <Download className="w-5 h-5" />
-                Export CSV
+                Export {activeTab === 'tools' ? 'Tools' : 'Cars'}
               </button>
               <button
                 onClick={handleLogout}
