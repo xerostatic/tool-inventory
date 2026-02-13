@@ -4,7 +4,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Plus, Trash2, Download, Search, Package, LogOut, UserCircle, Camera, Upload, Loader, ChevronDown, FileText } from 'lucide-react';
 import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable';
 
 // ============================================
 // CONFIGURATION
@@ -760,7 +760,7 @@ export default function ToolInventory() {
         `$${(item.estimated_value * item.quantity).toLocaleString()}`
       ]);
 
-      doc.autoTable({
+      autoTable(doc, {
         head: toolHeaders,
         body: toolRows,
         startY: yPosition,
@@ -815,7 +815,7 @@ export default function ToolInventory() {
         `$${parseFloat(car.estimated_value).toLocaleString()}`
       ]);
 
-      doc.autoTable({
+      autoTable(doc, {
         head: carHeaders,
         body: carRows,
         startY: yPosition,
