@@ -1,8 +1,10 @@
 // TOOL INVENTORY - COMPLETE REACT APP WITH NEON POSTGRESQL BACKEND
 // Multi-user app with image recognition powered by Google Cloud Vision
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Plus, Trash2, Download, Search, Package, LogOut, UserCircle, Camera, Upload, Loader } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { Plus, Trash2, Download, Search, Package, LogOut, UserCircle, Camera, Upload, Loader, ChevronDown, FileText } from 'lucide-react';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 
 // ============================================
 // CONFIGURATION
@@ -360,6 +362,8 @@ export default function ToolInventory() {
     image_url: ''
   });
   const [decodingVin, setDecodingVin] = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const exportMenuRef = useRef(null);
 
   const categories = [
     'Diagnostic Equipment', 'Toolboxes/Storage', 'Sockets & Drives', 'Wrenches',
@@ -629,6 +633,17 @@ export default function ToolInventory() {
     return totals;
   }, [items]);
 
+  // Close export menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(event.target)) {
+        setShowExportMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   const exportToCSV = () => {
     let headers, rows, filename;
 
@@ -671,6 +686,259 @@ export default function ToolInventory() {
     a.href = url;
     a.download = filename;
     a.click();
+  };
+
+  const exportToPDF = (type) => {
+    setShowExportMenu(false);
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const date = new Date().toLocaleDateString();
+    let yPosition = 20;
+
+    // Draw logo
+    const logoX = pageWidth / 2 - 45;
+    const logoY = yPosition - 5;
+
+    // Outer circle (speedometer)
+    doc.setDrawColor(30, 64, 175);
+    doc.setLineWidth(2);
+    doc.circle(logoX + 12, logoY + 12, 12, 'S');
+
+    // Inner arc (speed indicator)
+    doc.setLineWidth(1.5);
+    doc.setDrawColor(220, 38, 38); // Red accent
+    // Draw speed needle
+    doc.line(logoX + 12, logoY + 12, logoX + 20, logoY + 5);
+
+    // Small tick marks
+    doc.setDrawColor(30, 64, 175);
+    doc.setLineWidth(0.8);
+    doc.line(logoX + 12, logoY + 2, logoX + 12, logoY + 5);
+    doc.line(logoX + 22, logoY + 7, logoX + 20, logoY + 9);
+    doc.line(logoX + 2, logoY + 7, logoX + 4, logoY + 9);
+
+    // Wrench accent (small)
+    doc.setLineWidth(1.2);
+    doc.setDrawColor(100, 100, 100);
+    doc.line(logoX + 18, logoY + 18, logoX + 24, logoY + 24);
+
+    // Company name
+    doc.setFontSize(22);
+    doc.setFont(undefined, 'bold');
+    doc.setTextColor(30, 64, 175);
+    doc.text('SPEEDISH', logoX + 28, logoY + 10);
+    doc.setFontSize(22);
+    doc.setTextColor(220, 38, 38);
+    doc.text('AUTOMOTIVE', logoX + 28, logoY + 19);
+
+    yPosition += 25;
+
+    // Subtitle
+    doc.setFont(undefined, 'normal');
+    doc.setFontSize(12);
+    doc.setTextColor(100, 100, 100);
+    doc.text('Inventory Valuation Report', pageWidth / 2, yPosition, { align: 'center' });
+    yPosition += 6;
+    doc.text(`Generated: ${date}`, pageWidth / 2, yPosition, { align: 'center' });
+    yPosition += 15;
+
+    // Include tools
+    if (type === 'tools' || type === 'both') {
+      doc.setFontSize(16);
+      doc.setTextColor(0, 0, 0);
+      doc.text('Tool Inventory', 14, yPosition);
+      yPosition += 3;
+
+      const toolHeaders = [['Category', 'Brand', 'Description', 'Qty', 'Condition', 'Unit Value', 'Total']];
+      const toolRows = items.map(item => [
+        item.category,
+        item.brand,
+        item.description.substring(0, 30) + (item.description.length > 30 ? '...' : ''),
+        item.quantity,
+        item.condition,
+        `$${item.estimated_value.toLocaleString()}`,
+        `$${(item.estimated_value * item.quantity).toLocaleString()}`
+      ]);
+
+      doc.autoTable({
+        head: toolHeaders,
+        body: toolRows,
+        startY: yPosition,
+        theme: 'striped',
+        headStyles: { fillColor: [30, 64, 175], textColor: 255 },
+        styles: { fontSize: 8, cellPadding: 2 },
+        columnStyles: {
+          0: { cellWidth: 30 },
+          1: { cellWidth: 22 },
+          2: { cellWidth: 45 },
+          3: { cellWidth: 12 },
+          4: { cellWidth: 20 },
+          5: { cellWidth: 25 },
+          6: { cellWidth: 25 }
+        }
+      });
+
+      yPosition = doc.lastAutoTable.finalY + 8;
+
+      // Tool summary
+      doc.setFontSize(11);
+      doc.setTextColor(0, 0, 0);
+      doc.text(`Total Tools: ${items.length} items`, 14, yPosition);
+      yPosition += 6;
+      doc.setFont(undefined, 'bold');
+      doc.text(`Tool Value: $${toolsValue.toLocaleString()}`, 14, yPosition);
+      doc.setFont(undefined, 'normal');
+      yPosition += 15;
+    }
+
+    // Include cars
+    if (type === 'cars' || type === 'both') {
+      // Check if we need a new page
+      if (yPosition > 200) {
+        doc.addPage();
+        yPosition = 20;
+      }
+
+      doc.setFontSize(16);
+      doc.setTextColor(0, 0, 0);
+      doc.text('Car Inventory', 14, yPosition);
+      yPosition += 3;
+
+      const carHeaders = [['Year', 'Make', 'Model', 'VIN', 'Mileage', 'Condition', 'Value']];
+      const carRows = cars.map(car => [
+        car.year,
+        car.make,
+        car.model,
+        car.vin ? car.vin.substring(0, 10) + '...' : '-',
+        car.mileage ? car.mileage.toLocaleString() : '-',
+        car.condition,
+        `$${parseFloat(car.estimated_value).toLocaleString()}`
+      ]);
+
+      doc.autoTable({
+        head: carHeaders,
+        body: carRows,
+        startY: yPosition,
+        theme: 'striped',
+        headStyles: { fillColor: [124, 58, 237], textColor: 255 }, // Purple for cars
+        styles: { fontSize: 8, cellPadding: 2 },
+        columnStyles: {
+          0: { cellWidth: 18 },
+          1: { cellWidth: 28 },
+          2: { cellWidth: 28 },
+          3: { cellWidth: 30 },
+          4: { cellWidth: 25 },
+          5: { cellWidth: 22 },
+          6: { cellWidth: 28 }
+        }
+      });
+
+      yPosition = doc.lastAutoTable.finalY + 8;
+
+      // Car summary
+      doc.setFontSize(11);
+      doc.setTextColor(0, 0, 0);
+      doc.text(`Total Cars: ${cars.length} vehicles`, 14, yPosition);
+      yPosition += 6;
+      doc.setFont(undefined, 'bold');
+      doc.text(`Car Value: $${carsValue.toLocaleString()}`, 14, yPosition);
+      doc.setFont(undefined, 'normal');
+      yPosition += 15;
+    }
+
+    // Grand total for combined export
+    if (type === 'both') {
+      // Check if we need a new page
+      if (yPosition > 260) {
+        doc.addPage();
+        yPosition = 20;
+      }
+
+      doc.setDrawColor(30, 64, 175);
+      doc.setLineWidth(0.5);
+      doc.line(14, yPosition, pageWidth - 14, yPosition);
+      yPosition += 10;
+
+      doc.setFontSize(14);
+      doc.setFont(undefined, 'bold');
+      doc.setTextColor(30, 64, 175);
+      doc.text(`TOTAL INVENTORY VALUE: $${totalValue.toLocaleString()}`, 14, yPosition);
+    }
+
+    // Add valuation methodology section on last page
+    const pageHeight = doc.internal.pageSize.getHeight();
+
+    // Check if we need a new page for footer content
+    if (yPosition > pageHeight - 80) {
+      doc.addPage();
+      yPosition = 20;
+    }
+
+    yPosition += 10;
+
+    // Valuation methodology box
+    doc.setDrawColor(100, 100, 100);
+    doc.setFillColor(245, 245, 245);
+    doc.roundedRect(10, yPosition, pageWidth - 20, 55, 3, 3, 'FD');
+
+    yPosition += 8;
+    doc.setFontSize(10);
+    doc.setFont(undefined, 'bold');
+    doc.setTextColor(30, 64, 175);
+    doc.text('VALUATION METHODOLOGY', 14, yPosition);
+
+    yPosition += 6;
+    doc.setFontSize(7);
+    doc.setFont(undefined, 'normal');
+    doc.setTextColor(60, 60, 60);
+
+    const methodologyText = [
+      'All values represent Fair Market Value (FMV) estimates based on current market comparables from multiple sources:',
+      '',
+      '• eBay (completed listings & Buy It Now)     • Facebook Marketplace     • Craigslist',
+      '• Amazon     • Snap-on Tools (official pricing)     • Mac Tools (official pricing)     • Matco Tools (official pricing)',
+      '• Tool Truck Direct     • Zoro Tools     • Tooltopia     • KC Tool     • Acme Tools     • Northern Tool',
+      '• CarGurus     • Autotrader     • Cars.com     • Kelley Blue Book (KBB)     • NADA Guides     • Edmunds',
+      '',
+      'Values are adjusted for condition, age, completeness, and regional market variations. Tool values reflect replacement cost',
+      'for items in similar condition. Vehicle values consider mileage, maintenance history, and market demand.'
+    ];
+
+    methodologyText.forEach((line, idx) => {
+      doc.text(line, 14, yPosition + (idx * 4.5));
+    });
+
+    // Footer on all pages
+    const pageCount = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFontSize(7);
+      doc.setTextColor(120, 120, 120);
+      doc.text(
+        'Speedish Automotive | Professional Inventory Valuation Services',
+        pageWidth / 2,
+        pageHeight - 12,
+        { align: 'center' }
+      );
+      doc.text(
+        `Page ${i} of ${pageCount} | This document is for informational purposes only and does not constitute a formal appraisal.`,
+        pageWidth / 2,
+        pageHeight - 7,
+        { align: 'center' }
+      );
+    }
+
+    // Generate filename
+    let filename;
+    if (type === 'tools') {
+      filename = `tool-inventory-${new Date().toISOString().split('T')[0]}.pdf`;
+    } else if (type === 'cars') {
+      filename = `car-inventory-${new Date().toISOString().split('T')[0]}.pdf`;
+    } else {
+      filename = `complete-inventory-${new Date().toISOString().split('T')[0]}.pdf`;
+    }
+
+    doc.save(filename);
   };
 
   const getConditionColor = (condition) => {
@@ -727,14 +995,59 @@ export default function ToolInventory() {
                   {user.email}
                 </div>
               )}
-              <button
-                onClick={exportToCSV}
-                disabled={activeTab === 'tools' ? items.length === 0 : cars.length === 0}
-                className="flex items-center gap-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 px-4 py-2 rounded-lg transition"
-              >
-                <Download className="w-5 h-5" />
-                Export {activeTab === 'tools' ? 'Tools' : 'Cars'}
-              </button>
+              <div className="relative" ref={exportMenuRef}>
+                <button
+                  onClick={() => setShowExportMenu(!showExportMenu)}
+                  disabled={items.length === 0 && cars.length === 0}
+                  className="flex items-center gap-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 px-4 py-2 rounded-lg transition"
+                >
+                  <Download className="w-5 h-5" />
+                  Export
+                  <ChevronDown className="w-4 h-4" />
+                </button>
+                {showExportMenu && (
+                  <div className="absolute right-0 mt-2 w-56 bg-gray-700 rounded-lg shadow-xl border border-gray-600 py-2 z-50">
+                    <div className="px-3 py-2 text-xs text-gray-400 uppercase tracking-wide border-b border-gray-600">
+                      PDF Export
+                    </div>
+                    <button
+                      onClick={() => exportToPDF('tools')}
+                      disabled={items.length === 0}
+                      className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed text-left"
+                    >
+                      <FileText className="w-4 h-4 text-blue-400" />
+                      Tools Only
+                    </button>
+                    <button
+                      onClick={() => exportToPDF('cars')}
+                      disabled={cars.length === 0}
+                      className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed text-left"
+                    >
+                      <FileText className="w-4 h-4 text-purple-400" />
+                      Cars Only
+                    </button>
+                    <button
+                      onClick={() => exportToPDF('both')}
+                      disabled={items.length === 0 && cars.length === 0}
+                      className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed text-left"
+                    >
+                      <FileText className="w-4 h-4 text-green-400" />
+                      Complete Inventory
+                    </button>
+                    <div className="px-3 py-2 text-xs text-gray-400 uppercase tracking-wide border-t border-b border-gray-600 mt-2">
+                      CSV Export
+                    </div>
+                    <button
+                      onClick={() => { exportToCSV(); setShowExportMenu(false); }}
+                      disabled={activeTab === 'tools' ? items.length === 0 : cars.length === 0}
+                      className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed text-left"
+                    >
+                      <Download className="w-4 h-4 text-gray-400" />
+                      {activeTab === 'tools' ? 'Tools CSV' : 'Cars CSV'}
+                    </button>
+                  </div>
+                )}
+              </div>
               <button
                 onClick={handleLogout}
                 className="flex items-center gap-2 bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg transition"
