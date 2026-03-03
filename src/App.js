@@ -364,6 +364,67 @@ export default function ToolInventory() {
   const [decodingVin, setDecodingVin] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const exportMenuRef = useRef(null);
+  const [toolSort, setToolSort] = useState('newest');
+  const [carSort, setCarSort] = useState('newest');
+
+  const toolSortOptions = [
+    { value: 'newest', label: 'Newest First' },
+    { value: 'value-desc', label: 'Value: High to Low' },
+    { value: 'value-asc', label: 'Value: Low to High' },
+    { value: 'category', label: 'Category A-Z' },
+    { value: 'brand', label: 'Brand A-Z' },
+    { value: 'condition', label: 'Condition: Best First' },
+    { value: 'quantity-desc', label: 'Quantity: High to Low' },
+  ];
+
+  const carSortOptions = [
+    { value: 'newest', label: 'Newest First' },
+    { value: 'value-desc', label: 'Value: High to Low' },
+    { value: 'value-asc', label: 'Value: Low to High' },
+    { value: 'year-desc', label: 'Year: Newest' },
+    { value: 'year-asc', label: 'Year: Oldest' },
+    { value: 'mileage-asc', label: 'Mileage: Low to High' },
+    { value: 'mileage-desc', label: 'Mileage: High to Low' },
+    { value: 'make', label: 'Make A-Z' },
+    { value: 'condition', label: 'Condition: Best First' },
+  ];
+
+  const conditionRank = { 'New': 5, 'Excellent': 4, 'Good': 3, 'Fair': 2, 'Poor': 1 };
+
+  const getSortComparator = (sortKey, isTools) => {
+    return (a, b) => {
+      switch (sortKey) {
+        case 'value-desc':
+          return isTools
+            ? (b.estimated_value * b.quantity) - (a.estimated_value * a.quantity)
+            : parseFloat(b.estimated_value) - parseFloat(a.estimated_value);
+        case 'value-asc':
+          return isTools
+            ? (a.estimated_value * a.quantity) - (b.estimated_value * b.quantity)
+            : parseFloat(a.estimated_value) - parseFloat(b.estimated_value);
+        case 'category':
+          return a.category.localeCompare(b.category);
+        case 'brand':
+          return a.brand.localeCompare(b.brand);
+        case 'condition':
+          return (conditionRank[b.condition] || 0) - (conditionRank[a.condition] || 0);
+        case 'quantity-desc':
+          return b.quantity - a.quantity;
+        case 'year-desc':
+          return (b.year || 0) - (a.year || 0);
+        case 'year-asc':
+          return (a.year || 0) - (b.year || 0);
+        case 'mileage-asc':
+          return (a.mileage || 0) - (b.mileage || 0);
+        case 'mileage-desc':
+          return (b.mileage || 0) - (a.mileage || 0);
+        case 'make':
+          return (a.make || '').localeCompare(b.make || '');
+        default:
+          return 0;
+      }
+    };
+  };
 
   const categories = [
     'Diagnostic Equipment', 'Toolboxes/Storage', 'Sockets & Drives', 'Wrenches',
@@ -602,15 +663,27 @@ export default function ToolInventory() {
   };
 
   const filteredItems = useMemo(() => {
-    return items.filter(item => {
+    const filtered = items.filter(item => {
       const matchesCategory = filterCategory === 'All' || item.category === filterCategory;
-      const matchesSearch = 
+      const matchesSearch =
         item.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
         item.brand.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (item.notes && item.notes.toLowerCase().includes(searchTerm.toLowerCase()));
       return matchesCategory && matchesSearch;
     });
-  }, [items, filterCategory, searchTerm]);
+    if (toolSort === 'newest') return filtered;
+    return [...filtered].sort(getSortComparator(toolSort, true));
+  }, [items, filterCategory, searchTerm, toolSort]);
+
+  const filteredCars = useMemo(() => {
+    const filtered = cars.filter(car =>
+      car.make.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      car.model.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (car.notes && car.notes.toLowerCase().includes(searchTerm.toLowerCase()))
+    );
+    if (carSort === 'newest') return filtered;
+    return [...filtered].sort(getSortComparator(carSort, false));
+  }, [cars, searchTerm, carSort]);
 
   const toolsValue = useMemo(() => {
     return items.reduce((sum, item) => sum + (item.estimated_value * item.quantity), 0);
@@ -1127,6 +1200,15 @@ export default function ToolInventory() {
                 className="w-full pl-10 pr-4 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
+            <select
+              value={activeTab === 'tools' ? toolSort : carSort}
+              onChange={(e) => activeTab === 'tools' ? setToolSort(e.target.value) : setCarSort(e.target.value)}
+              className="px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500"
+            >
+              {(activeTab === 'tools' ? toolSortOptions : carSortOptions).map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
             {activeTab === 'tools' && (
               <>
                 <select
@@ -1470,21 +1552,19 @@ export default function ToolInventory() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-700">
-                  {cars.length === 0 ? (
+                  {filteredCars.length === 0 ? (
                     <tr>
                       <td colSpan="9" className="px-4 py-12 text-center text-gray-400">
                         <Package className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                        <p className="text-lg">No cars yet. Click "Add Car" to start building your car inventory.</p>
+                        <p className="text-lg">
+                          {cars.length === 0
+                            ? 'No cars yet. Click "Add Car" to start building your car inventory.'
+                            : 'No cars match your search.'}
+                        </p>
                       </td>
                     </tr>
                   ) : (
-                    cars
-                      .filter(car => 
-                        car.make.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                        car.model.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                        (car.notes && car.notes.toLowerCase().includes(searchTerm.toLowerCase()))
-                      )
-                      .map(car => (
+                    filteredCars.map(car => (
                         <tr key={car.id} className="hover:bg-gray-750">
                           <td className="px-4 py-3 text-sm font-medium">{car.make}</td>
                           <td className="px-4 py-3 text-sm">{car.model}</td>
