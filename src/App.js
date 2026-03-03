@@ -2,7 +2,7 @@
 // Multi-user app with image recognition powered by Google Cloud Vision
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { Plus, Trash2, Download, Search, Package, LogOut, UserCircle, Camera, Upload, Loader, ChevronDown, FileText } from 'lucide-react';
+import { Plus, Trash2, Download, Search, Package, LogOut, UserCircle, Camera, Upload, Loader, ChevronDown, ChevronUp, FileText, Pencil, Check, X } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -48,12 +48,20 @@ const getSortComparator = (sortKey, isTools) => {
           : parseFloat(a.estimated_value) - parseFloat(b.estimated_value);
       case 'category':
         return a.category.localeCompare(b.category);
+      case 'category-desc':
+        return b.category.localeCompare(a.category);
       case 'brand':
         return a.brand.localeCompare(b.brand);
+      case 'brand-desc':
+        return b.brand.localeCompare(a.brand);
       case 'condition':
         return (CONDITION_RANK[b.condition] || 0) - (CONDITION_RANK[a.condition] || 0);
+      case 'condition-asc':
+        return (CONDITION_RANK[a.condition] || 0) - (CONDITION_RANK[b.condition] || 0);
       case 'quantity-desc':
         return b.quantity - a.quantity;
+      case 'quantity-asc':
+        return a.quantity - b.quantity;
       case 'year-desc':
         return (b.year || 0) - (a.year || 0);
       case 'year-asc':
@@ -64,6 +72,8 @@ const getSortComparator = (sortKey, isTools) => {
         return (b.mileage || 0) - (a.mileage || 0);
       case 'make':
         return (a.make || '').localeCompare(b.make || '');
+      case 'make-desc':
+        return (b.make || '').localeCompare(a.make || '');
       default:
         return 0;
     }
@@ -425,6 +435,8 @@ export default function ToolInventory() {
   const exportMenuRef = useRef(null);
   const [toolSort, setToolSort] = useState('newest');
   const [carSort, setCarSort] = useState('newest');
+  const [editingTool, setEditingTool] = useState(null);
+  const [editingCar, setEditingCar] = useState(null);
 
   const categories = [
     'Diagnostic Equipment', 'Toolboxes/Storage', 'Sockets & Drives', 'Wrenches',
@@ -627,6 +639,119 @@ export default function ToolInventory() {
       console.error('Error deleting car:', err);
       alert('Failed to delete car: ' + err.message);
     }
+  };
+
+  const updateItem = async () => {
+    if (!editingTool) return;
+    try {
+      const updated = await api.updateTool(editingTool.id, {
+        category: editingTool.category,
+        brand: editingTool.brand,
+        description: editingTool.description,
+        quantity: parseInt(editingTool.quantity),
+        condition: editingTool.condition,
+        estimated_value: parseFloat(editingTool.estimated_value),
+        notes: editingTool.notes || '',
+        image_url: editingTool.image_url || ''
+      });
+      setItems(items.map(item => item.id === updated.id ? updated : item));
+      setEditingTool(null);
+    } catch (err) {
+      console.error('Error updating item:', err);
+      alert('Failed to update item: ' + err.message);
+    }
+  };
+
+  const updateCar = async () => {
+    if (!editingCar) return;
+    try {
+      const response = await fetch(`${API_URL}/cars/${editingCar.id}`, {
+        method: 'PUT',
+        headers: api.getAuthHeaders(),
+        body: JSON.stringify({
+          make: editingCar.make,
+          model: editingCar.model,
+          year: parseInt(editingCar.year),
+          vin: editingCar.vin || '',
+          mileage: editingCar.mileage ? parseInt(editingCar.mileage) : null,
+          condition: editingCar.condition,
+          estimated_value: parseFloat(editingCar.estimated_value),
+          notes: editingCar.notes || '',
+          image_url: editingCar.image_url || ''
+        })
+      });
+      const updated = await response.json();
+      setCars(cars.map(car => car.id === updated.id ? updated : car));
+      setEditingCar(null);
+    } catch (err) {
+      console.error('Error updating car:', err);
+      alert('Failed to update car: ' + err.message);
+    }
+  };
+
+  const handleColumnSort = (sortKey) => {
+    if (activeTab === 'tools') {
+      if (toolSort === sortKey) {
+        // Toggle direction
+        const toggleMap = {
+          'category': 'category-desc', 'category-desc': 'category',
+          'brand': 'brand-desc', 'brand-desc': 'brand',
+          'quantity-desc': 'quantity-asc', 'quantity-asc': 'quantity-desc',
+          'condition': 'condition-asc', 'condition-asc': 'condition',
+          'value-desc': 'value-asc', 'value-asc': 'value-desc',
+        };
+        setToolSort(toggleMap[sortKey] || 'newest');
+      } else {
+        setToolSort(sortKey);
+      }
+    } else {
+      if (carSort === sortKey) {
+        const toggleMap = {
+          'make': 'make-desc', 'make-desc': 'make',
+          'year-desc': 'year-asc', 'year-asc': 'year-desc',
+          'mileage-asc': 'mileage-desc', 'mileage-desc': 'mileage-asc',
+          'condition': 'condition-asc', 'condition-asc': 'condition',
+          'value-desc': 'value-asc', 'value-asc': 'value-desc',
+        };
+        setCarSort(toggleMap[sortKey] || 'newest');
+      } else {
+        setCarSort(sortKey);
+      }
+    }
+  };
+
+  const SortableHeader = ({ label, sortKey, currentSort, align }) => {
+    const isActive = currentSort === sortKey ||
+      (sortKey && currentSort === {
+        'category': 'category-desc', 'brand': 'brand-desc', 'make': 'make-desc',
+        'quantity-desc': 'quantity-asc', 'condition': 'condition-asc',
+        'value-desc': 'value-asc', 'year-desc': 'year-asc', 'mileage-asc': 'mileage-desc',
+      }[sortKey]);
+    const isAsc = currentSort && (currentSort.endsWith('-asc') ||
+      ['category', 'brand', 'make'].includes(currentSort));
+
+    if (!sortKey) {
+      return (
+        <th className={`px-4 py-3 ${align === 'center' ? 'text-center' : 'text-left'} text-sm font-semibold`}>
+          {label}
+        </th>
+      );
+    }
+
+    return (
+      <th
+        onClick={() => handleColumnSort(sortKey)}
+        className={`px-4 py-3 ${align === 'center' ? 'text-center' : 'text-left'} text-sm font-semibold cursor-pointer hover:text-blue-400 select-none transition ${isActive ? 'text-blue-400' : ''}`}
+      >
+        <span className="inline-flex items-center gap-1">
+          {label}
+          {isActive && (isAsc
+            ? <ChevronUp className="w-3 h-3" />
+            : <ChevronDown className="w-3 h-3" />
+          )}
+        </span>
+      </th>
+    );
   };
 
   const decodeVin = async () => {
@@ -1483,13 +1608,13 @@ export default function ToolInventory() {
               <table className="w-full">
                 <thead className="bg-gray-700">
                   <tr>
-                    <th className="px-4 py-3 text-left text-sm font-semibold">Category</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold">Brand</th>
+                    <SortableHeader label="Category" sortKey="category" currentSort={toolSort} />
+                    <SortableHeader label="Brand" sortKey="brand" currentSort={toolSort} />
                     <th className="px-4 py-3 text-left text-sm font-semibold">Description</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold">Qty</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold">Condition</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold">Unit Value</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold">Total</th>
+                    <SortableHeader label="Qty" sortKey="quantity-desc" currentSort={toolSort} />
+                    <SortableHeader label="Condition" sortKey="condition" currentSort={toolSort} />
+                    <SortableHeader label="Unit Value" sortKey="value-desc" currentSort={toolSort} />
+                    <SortableHeader label="Total" sortKey="value-desc" currentSort={toolSort} />
                     <th className="px-4 py-3 text-left text-sm font-semibold">Notes</th>
                     <th className="px-4 py-3 text-center text-sm font-semibold">Action</th>
                   </tr>
@@ -1500,7 +1625,7 @@ export default function ToolInventory() {
                     <td colSpan="9" className="px-4 py-12 text-center text-gray-400">
                       <Package className="w-12 h-12 mx-auto mb-3 opacity-50" />
                       <p className="text-lg">
-                        {items.length === 0 
+                        {items.length === 0
                           ? 'No items yet. Click "Add Item" to start building your inventory.'
                           : 'No items match your search.'}
                       </p>
@@ -1508,30 +1633,84 @@ export default function ToolInventory() {
                   </tr>
                 ) : (
                   filteredItems.map(item => (
-                    <tr key={item.id} className="hover:bg-gray-750">
-                      <td className="px-4 py-3 text-sm">{item.category}</td>
-                      <td className="px-4 py-3 text-sm font-medium">{item.brand}</td>
-                      <td className="px-4 py-3 text-sm">{item.description}</td>
-                      <td className="px-4 py-3 text-sm">{item.quantity}</td>
-                      <td className="px-4 py-3 text-sm">
-                        <span className={`px-2 py-1 rounded text-xs font-medium ${getConditionColor(item.condition)}`}>
-                          {item.condition}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-sm font-medium">${item.estimated_value.toLocaleString()}</td>
-                      <td className="px-4 py-3 text-sm font-bold text-green-400">
-                        ${(item.estimated_value * item.quantity).toLocaleString()}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-400">{item.notes || '-'}</td>
-                      <td className="px-4 py-3 text-center">
-                        <button
-                          onClick={() => deleteItem(item.id)}
-                          className="text-red-400 hover:text-red-300 transition"
-                        >
-                          <Trash2 className="w-5 h-5" />
-                        </button>
-                      </td>
-                    </tr>
+                    editingTool?.id === item.id ? (
+                      <tr key={item.id} className="bg-gray-750">
+                        <td className="px-2 py-2">
+                          <select value={editingTool.category} onChange={(e) => setEditingTool({...editingTool, category: e.target.value})}
+                            className="w-full px-2 py-1 bg-gray-600 border border-gray-500 rounded text-sm">
+                            {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                          </select>
+                        </td>
+                        <td className="px-2 py-2">
+                          <select value={editingTool.brand} onChange={(e) => setEditingTool({...editingTool, brand: e.target.value})}
+                            className="w-full px-2 py-1 bg-gray-600 border border-gray-500 rounded text-sm">
+                            {brands.map(b => <option key={b} value={b}>{b}</option>)}
+                          </select>
+                        </td>
+                        <td className="px-2 py-2">
+                          <input type="text" value={editingTool.description} onChange={(e) => setEditingTool({...editingTool, description: e.target.value})}
+                            className="w-full px-2 py-1 bg-gray-600 border border-gray-500 rounded text-sm" />
+                        </td>
+                        <td className="px-2 py-2">
+                          <input type="number" value={editingTool.quantity} min="1" onChange={(e) => setEditingTool({...editingTool, quantity: e.target.value})}
+                            className="w-16 px-2 py-1 bg-gray-600 border border-gray-500 rounded text-sm" />
+                        </td>
+                        <td className="px-2 py-2">
+                          <select value={editingTool.condition} onChange={(e) => setEditingTool({...editingTool, condition: e.target.value})}
+                            className="w-full px-2 py-1 bg-gray-600 border border-gray-500 rounded text-sm">
+                            {conditions.map(c => <option key={c} value={c}>{c}</option>)}
+                          </select>
+                        </td>
+                        <td className="px-2 py-2">
+                          <input type="number" value={editingTool.estimated_value} step="0.01" onChange={(e) => setEditingTool({...editingTool, estimated_value: e.target.value})}
+                            className="w-24 px-2 py-1 bg-gray-600 border border-gray-500 rounded text-sm" />
+                        </td>
+                        <td className="px-4 py-3 text-sm font-bold text-green-400">
+                          ${(parseFloat(editingTool.estimated_value || 0) * parseInt(editingTool.quantity || 0)).toLocaleString()}
+                        </td>
+                        <td className="px-2 py-2">
+                          <input type="text" value={editingTool.notes || ''} onChange={(e) => setEditingTool({...editingTool, notes: e.target.value})}
+                            className="w-full px-2 py-1 bg-gray-600 border border-gray-500 rounded text-sm" />
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            <button onClick={updateItem} className="text-green-400 hover:text-green-300 transition">
+                              <Check className="w-5 h-5" />
+                            </button>
+                            <button onClick={() => setEditingTool(null)} className="text-gray-400 hover:text-white transition">
+                              <X className="w-5 h-5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : (
+                      <tr key={item.id} className="hover:bg-gray-750">
+                        <td className="px-4 py-3 text-sm">{item.category}</td>
+                        <td className="px-4 py-3 text-sm font-medium">{item.brand}</td>
+                        <td className="px-4 py-3 text-sm">{item.description}</td>
+                        <td className="px-4 py-3 text-sm">{item.quantity}</td>
+                        <td className="px-4 py-3 text-sm">
+                          <span className={`px-2 py-1 rounded text-xs font-medium ${getConditionColor(item.condition)}`}>
+                            {item.condition}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-sm font-medium">${item.estimated_value.toLocaleString()}</td>
+                        <td className="px-4 py-3 text-sm font-bold text-green-400">
+                          ${(item.estimated_value * item.quantity).toLocaleString()}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-400">{item.notes || '-'}</td>
+                        <td className="px-4 py-3 text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            <button onClick={() => setEditingTool({...item})} className="text-blue-400 hover:text-blue-300 transition">
+                              <Pencil className="w-4 h-4" />
+                            </button>
+                            <button onClick={() => deleteItem(item.id)} className="text-red-400 hover:text-red-300 transition">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
                   ))
                 )}
               </tbody>
@@ -1540,13 +1719,13 @@ export default function ToolInventory() {
               <table className="w-full">
                 <thead className="bg-gray-700">
                   <tr>
-                    <th className="px-4 py-3 text-left text-sm font-semibold">Make</th>
+                    <SortableHeader label="Make" sortKey="make" currentSort={carSort} />
                     <th className="px-4 py-3 text-left text-sm font-semibold">Model</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold">Year</th>
+                    <SortableHeader label="Year" sortKey="year-desc" currentSort={carSort} />
                     <th className="px-4 py-3 text-left text-sm font-semibold">VIN</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold">Mileage</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold">Condition</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold">Value</th>
+                    <SortableHeader label="Mileage" sortKey="mileage-asc" currentSort={carSort} />
+                    <SortableHeader label="Condition" sortKey="condition" currentSort={carSort} />
+                    <SortableHeader label="Value" sortKey="value-desc" currentSort={carSort} />
                     <th className="px-4 py-3 text-left text-sm font-semibold">Notes</th>
                     <th className="px-4 py-3 text-center text-sm font-semibold">Action</th>
                   </tr>
@@ -1565,6 +1744,54 @@ export default function ToolInventory() {
                     </tr>
                   ) : (
                     filteredCars.map(car => (
+                      editingCar?.id === car.id ? (
+                        <tr key={car.id} className="bg-gray-750">
+                          <td className="px-2 py-2">
+                            <input type="text" value={editingCar.make} onChange={(e) => setEditingCar({...editingCar, make: e.target.value})}
+                              className="w-full px-2 py-1 bg-gray-600 border border-gray-500 rounded text-sm" />
+                          </td>
+                          <td className="px-2 py-2">
+                            <input type="text" value={editingCar.model} onChange={(e) => setEditingCar({...editingCar, model: e.target.value})}
+                              className="w-full px-2 py-1 bg-gray-600 border border-gray-500 rounded text-sm" />
+                          </td>
+                          <td className="px-2 py-2">
+                            <input type="number" value={editingCar.year} onChange={(e) => setEditingCar({...editingCar, year: e.target.value})}
+                              className="w-20 px-2 py-1 bg-gray-600 border border-gray-500 rounded text-sm" />
+                          </td>
+                          <td className="px-2 py-2">
+                            <input type="text" value={editingCar.vin || ''} maxLength="17" onChange={(e) => setEditingCar({...editingCar, vin: e.target.value.toUpperCase()})}
+                              className="w-full px-2 py-1 bg-gray-600 border border-gray-500 rounded text-sm text-xs" />
+                          </td>
+                          <td className="px-2 py-2">
+                            <input type="number" value={editingCar.mileage || ''} min="0" onChange={(e) => setEditingCar({...editingCar, mileage: e.target.value})}
+                              className="w-24 px-2 py-1 bg-gray-600 border border-gray-500 rounded text-sm" />
+                          </td>
+                          <td className="px-2 py-2">
+                            <select value={editingCar.condition} onChange={(e) => setEditingCar({...editingCar, condition: e.target.value})}
+                              className="w-full px-2 py-1 bg-gray-600 border border-gray-500 rounded text-sm">
+                              {conditions.map(c => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                          </td>
+                          <td className="px-2 py-2">
+                            <input type="number" value={editingCar.estimated_value} step="0.01" onChange={(e) => setEditingCar({...editingCar, estimated_value: e.target.value})}
+                              className="w-24 px-2 py-1 bg-gray-600 border border-gray-500 rounded text-sm" />
+                          </td>
+                          <td className="px-2 py-2">
+                            <input type="text" value={editingCar.notes || ''} onChange={(e) => setEditingCar({...editingCar, notes: e.target.value})}
+                              className="w-full px-2 py-1 bg-gray-600 border border-gray-500 rounded text-sm" />
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <div className="flex items-center justify-center gap-1">
+                              <button onClick={updateCar} className="text-green-400 hover:text-green-300 transition">
+                                <Check className="w-5 h-5" />
+                              </button>
+                              <button onClick={() => setEditingCar(null)} className="text-gray-400 hover:text-white transition">
+                                <X className="w-5 h-5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : (
                         <tr key={car.id} className="hover:bg-gray-750">
                           <td className="px-4 py-3 text-sm font-medium">{car.make}</td>
                           <td className="px-4 py-3 text-sm">{car.model}</td>
@@ -1581,15 +1808,18 @@ export default function ToolInventory() {
                           </td>
                           <td className="px-4 py-3 text-sm text-gray-400">{car.notes || '-'}</td>
                           <td className="px-4 py-3 text-center">
-                            <button
-                              onClick={() => deleteCar(car.id)}
-                              className="text-red-400 hover:text-red-300 transition"
-                            >
-                              <Trash2 className="w-5 h-5" />
-                            </button>
+                            <div className="flex items-center justify-center gap-1">
+                              <button onClick={() => setEditingCar({...car})} className="text-blue-400 hover:text-blue-300 transition">
+                                <Pencil className="w-4 h-4" />
+                              </button>
+                              <button onClick={() => deleteCar(car.id)} className="text-red-400 hover:text-red-300 transition">
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
                           </td>
                         </tr>
-                      ))
+                      )
+                    ))
                   )}
                 </tbody>
               </table>

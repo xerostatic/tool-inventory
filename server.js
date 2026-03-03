@@ -285,6 +285,24 @@ app.post('/api/cars', authenticate, async (req, res) => {
   }
 });
 
+// Cars: PUT update
+app.put('/api/cars/:id', authenticate, async (req, res) => {
+  const { make, model, year, vin, mileage, condition, estimated_value, notes, image_url } = req.body;
+  try {
+    const result = await pool.query(
+      `UPDATE cars SET make = $1, model = $2, year = $3, vin = $4, mileage = $5,
+        condition = $6, estimated_value = $7, notes = $8, image_url = $9, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $10 AND user_id = $11 RETURNING *`,
+      [make, model, year, vin || null, mileage || null, condition, estimated_value, notes || null, image_url || null, req.params.id, req.userId]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Car not found' });
+    return res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Update car error:', error);
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // Cars: DELETE
 app.delete('/api/cars/:id', authenticate, async (req, res) => {
   try {
