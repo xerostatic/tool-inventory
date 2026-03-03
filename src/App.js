@@ -11,6 +11,65 @@ import autoTable from 'jspdf-autotable';
 // ============================================
 const API_URL = '/api';
 
+const TOOL_SORT_OPTIONS = [
+  { value: 'newest', label: 'Newest First' },
+  { value: 'value-desc', label: 'Value: High to Low' },
+  { value: 'value-asc', label: 'Value: Low to High' },
+  { value: 'category', label: 'Category A-Z' },
+  { value: 'brand', label: 'Brand A-Z' },
+  { value: 'condition', label: 'Condition: Best First' },
+  { value: 'quantity-desc', label: 'Quantity: High to Low' },
+];
+
+const CAR_SORT_OPTIONS = [
+  { value: 'newest', label: 'Newest First' },
+  { value: 'value-desc', label: 'Value: High to Low' },
+  { value: 'value-asc', label: 'Value: Low to High' },
+  { value: 'year-desc', label: 'Year: Newest' },
+  { value: 'year-asc', label: 'Year: Oldest' },
+  { value: 'mileage-asc', label: 'Mileage: Low to High' },
+  { value: 'mileage-desc', label: 'Mileage: High to Low' },
+  { value: 'make', label: 'Make A-Z' },
+  { value: 'condition', label: 'Condition: Best First' },
+];
+
+const CONDITION_RANK = { 'New': 5, 'Excellent': 4, 'Good': 3, 'Fair': 2, 'Poor': 1 };
+
+const getSortComparator = (sortKey, isTools) => {
+  return (a, b) => {
+    switch (sortKey) {
+      case 'value-desc':
+        return isTools
+          ? (b.estimated_value * b.quantity) - (a.estimated_value * a.quantity)
+          : parseFloat(b.estimated_value) - parseFloat(a.estimated_value);
+      case 'value-asc':
+        return isTools
+          ? (a.estimated_value * a.quantity) - (b.estimated_value * b.quantity)
+          : parseFloat(a.estimated_value) - parseFloat(b.estimated_value);
+      case 'category':
+        return a.category.localeCompare(b.category);
+      case 'brand':
+        return a.brand.localeCompare(b.brand);
+      case 'condition':
+        return (CONDITION_RANK[b.condition] || 0) - (CONDITION_RANK[a.condition] || 0);
+      case 'quantity-desc':
+        return b.quantity - a.quantity;
+      case 'year-desc':
+        return (b.year || 0) - (a.year || 0);
+      case 'year-asc':
+        return (a.year || 0) - (b.year || 0);
+      case 'mileage-asc':
+        return (a.mileage || 0) - (b.mileage || 0);
+      case 'mileage-desc':
+        return (b.mileage || 0) - (a.mileage || 0);
+      case 'make':
+        return (a.make || '').localeCompare(b.make || '');
+      default:
+        return 0;
+    }
+  };
+};
+
 // ============================================
 // API CLIENT
 // ============================================
@@ -366,65 +425,6 @@ export default function ToolInventory() {
   const exportMenuRef = useRef(null);
   const [toolSort, setToolSort] = useState('newest');
   const [carSort, setCarSort] = useState('newest');
-
-  const toolSortOptions = [
-    { value: 'newest', label: 'Newest First' },
-    { value: 'value-desc', label: 'Value: High to Low' },
-    { value: 'value-asc', label: 'Value: Low to High' },
-    { value: 'category', label: 'Category A-Z' },
-    { value: 'brand', label: 'Brand A-Z' },
-    { value: 'condition', label: 'Condition: Best First' },
-    { value: 'quantity-desc', label: 'Quantity: High to Low' },
-  ];
-
-  const carSortOptions = [
-    { value: 'newest', label: 'Newest First' },
-    { value: 'value-desc', label: 'Value: High to Low' },
-    { value: 'value-asc', label: 'Value: Low to High' },
-    { value: 'year-desc', label: 'Year: Newest' },
-    { value: 'year-asc', label: 'Year: Oldest' },
-    { value: 'mileage-asc', label: 'Mileage: Low to High' },
-    { value: 'mileage-desc', label: 'Mileage: High to Low' },
-    { value: 'make', label: 'Make A-Z' },
-    { value: 'condition', label: 'Condition: Best First' },
-  ];
-
-  const conditionRank = { 'New': 5, 'Excellent': 4, 'Good': 3, 'Fair': 2, 'Poor': 1 };
-
-  const getSortComparator = (sortKey, isTools) => {
-    return (a, b) => {
-      switch (sortKey) {
-        case 'value-desc':
-          return isTools
-            ? (b.estimated_value * b.quantity) - (a.estimated_value * a.quantity)
-            : parseFloat(b.estimated_value) - parseFloat(a.estimated_value);
-        case 'value-asc':
-          return isTools
-            ? (a.estimated_value * a.quantity) - (b.estimated_value * b.quantity)
-            : parseFloat(a.estimated_value) - parseFloat(b.estimated_value);
-        case 'category':
-          return a.category.localeCompare(b.category);
-        case 'brand':
-          return a.brand.localeCompare(b.brand);
-        case 'condition':
-          return (conditionRank[b.condition] || 0) - (conditionRank[a.condition] || 0);
-        case 'quantity-desc':
-          return b.quantity - a.quantity;
-        case 'year-desc':
-          return (b.year || 0) - (a.year || 0);
-        case 'year-asc':
-          return (a.year || 0) - (b.year || 0);
-        case 'mileage-asc':
-          return (a.mileage || 0) - (b.mileage || 0);
-        case 'mileage-desc':
-          return (b.mileage || 0) - (a.mileage || 0);
-        case 'make':
-          return (a.make || '').localeCompare(b.make || '');
-        default:
-          return 0;
-      }
-    };
-  };
 
   const categories = [
     'Diagnostic Equipment', 'Toolboxes/Storage', 'Sockets & Drives', 'Wrenches',
@@ -1205,7 +1205,7 @@ export default function ToolInventory() {
               onChange={(e) => activeTab === 'tools' ? setToolSort(e.target.value) : setCarSort(e.target.value)}
               className="px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500"
             >
-              {(activeTab === 'tools' ? toolSortOptions : carSortOptions).map(opt => (
+              {(activeTab === 'tools' ? TOOL_SORT_OPTIONS : CAR_SORT_OPTIONS).map(opt => (
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
               ))}
             </select>
