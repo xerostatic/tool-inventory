@@ -10,6 +10,7 @@
     "@testing-library/user-event": "^13.5.0",
     "@vercel/blob": "^0.15.1",
     "bcryptjs": "^2.4.3",
+    "express": "^5.2.1",
     "express-validator": "^7.0.1",
     "jsonwebtoken": "^9.0.2",
     "jspdf": "^4.1.0",
@@ -21,8 +22,9 @@
     "web-vitals": "^2.1.4"
   },
   "scripts": {
-    "start": "react-scripts start",
+    "dev": "react-scripts start",
     "build": "react-scripts build",
+    "start": "node server.js",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },
